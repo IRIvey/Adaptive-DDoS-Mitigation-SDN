@@ -1,0 +1,963 @@
+<title>SDN DDoS Detection — Architecture &amp; Build Notes</title>
+
+<style>
+  :root {
+    --paper:      #F4F6F5;
+    --surface:    #FFFFFF;
+    --ink:        #121A1B;
+    --ink-soft:   #4A5A5D;
+    --ink-faint:  #7C8C8E;
+    --rule:       #D2DAD9;
+    --normal:     #0F6E7A;
+    --attack:     #A3402F;
+    --wash:       rgba(15, 110, 122, 0.07);
+    --attack-wash:rgba(163, 64, 47, 0.08);
+
+    --font-display: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --font-body: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: "Cascadia Mono", Consolas, "Liberation Mono", ui-monospace, monospace;
+
+    --step: 1.6rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #0E1414;
+      --surface:    #151D1D;
+      --ink:        #E7EDEC;
+      --ink-soft:   #9DAEAE;
+      --ink-faint:  #6E8080;
+      --rule:       #27312F;
+      --normal:     #57C6D2;
+      --attack:     #E4907A;
+      --wash:       rgba(87, 198, 210, 0.10);
+      --attack-wash:rgba(228, 144, 122, 0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+      --paper:      #0E1414;
+      --surface:    #151D1D;
+      --ink:        #E7EDEC;
+      --ink-soft:   #9DAEAE;
+      --ink-faint:  #6E8080;
+      --rule:       #27312F;
+      --normal:     #57C6D2;
+      --attack:     #E4907A;
+      --wash:       rgba(87, 198, 210, 0.10);
+      --attack-wash:rgba(228, 144, 122, 0.12);
+  }
+  :root[data-theme="light"] {
+      --paper:      #F4F6F5;
+      --surface:    #FFFFFF;
+      --ink:        #121A1B;
+      --ink-soft:   #4A5A5D;
+      --ink-faint:  #7C8C8E;
+      --rule:       #D2DAD9;
+      --normal:     #0F6E7A;
+      --attack:     #A3402F;
+      --wash:       rgba(15, 110, 122, 0.07);
+      --attack-wash:rgba(163, 64, 47, 0.08);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 3.5rem 1.5rem 6rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--step);
+  }
+
+  .prose { max-width: 44rem; }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--normal);
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: clamp(1.9rem, 4.2vw, 2.9rem);
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    margin: 0;
+    text-wrap: balance;
+    max-width: 22ch;
+  }
+  .standfirst {
+    font-size: 1.05rem;
+    color: var(--ink-soft);
+    max-width: 46rem;
+    margin: 0;
+  }
+  .meta {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    padding-top: 0.5rem;
+  }
+
+  /* ---------- sections ---------- */
+  section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+  }
+  section.flush { border-top: none; padding-top: 0; }
+
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.6rem;
+    line-height: 1.2;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.98rem;
+    margin: 0.6rem 0 0;
+    letter-spacing: 0.005em;
+  }
+  p { margin: 0; max-width: 44rem; }
+  ul, ol { margin: 0; padding-left: 1.2rem; max-width: 44rem; }
+  li { margin-bottom: 0.35rem; }
+  li::marker { color: var(--ink-faint); }
+  a { color: var(--normal); }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.855em;
+    background: var(--wash);
+    padding: 0.1em 0.35em;
+    border-radius: 2px;
+  }
+  strong { font-weight: 650; }
+
+  /* ---------- figures ---------- */
+  figure {
+    margin: 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+  .figbox {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1.4rem 1rem;
+    overflow-x: auto;
+  }
+  figure svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+  figcaption {
+    font-size: 0.83rem;
+    color: var(--ink-soft);
+    max-width: 44rem;
+    line-height: 1.5;
+  }
+
+  /* ---------- tables ---------- */
+  .scroll { overflow-x: auto; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.88rem;
+    min-width: 32rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.55rem 0.8rem 0.55rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 500;
+    border-bottom: 1px solid var(--ink-soft);
+    white-space: nowrap;
+  }
+  td.num, th.num { font-variant-numeric: tabular-nums; text-align: right; padding-right: 1.4rem; }
+  td.mono { font-family: var(--font-mono); font-size: 0.82rem; white-space: nowrap; }
+
+  /* ---------- callout ---------- */
+  .note {
+    border-left: 3px solid var(--attack);
+    background: var(--attack-wash);
+    padding: 0.9rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 46rem;
+  }
+  .note .label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--attack);
+  }
+  .note p { max-width: none; font-size: 0.94rem; }
+
+  /* ---------- status list ---------- */
+  .status { list-style: none; padding: 0; max-width: 46rem; }
+  .status li {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr;
+    gap: 0.9rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  .tag {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.15rem 0;
+  }
+  .tag.done { color: var(--normal); }
+  .tag.todo { color: var(--ink-faint); }
+  .tag.gap  { color: var(--attack); }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin: 0;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  @media (max-width: 34rem) {
+    .status li { grid-template-columns: 1fr; gap: 0.15rem; }
+    .page { padding: 2.5rem 1.1rem 4rem; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">Architecture &amp; Build Notes</div>
+    <h1>Comparative Analysis of Supervised and Unsupervised ML for DDoS Detection in SDN</h1>
+    <p class="standfirst">
+      An OMNeT++ simulation in which an SDN controller detects distributed
+      denial-of-service traffic with two different machine learning approaches
+      and blocks the attacker automatically. This document records what has been
+      built, how each piece works, and what remains.
+    </p>
+    <div class="meta">
+      <span>OMNeT++ 6.0.2</span>
+      <span>INET 3.8.5</span>
+      <span>OpenFlow (CoRE-RG)</span>
+      <span>scikit-learn 1.9</span>
+      <span>D:\IUT\3-2\DP2\SDN-DDoS-ML</span>
+    </div>
+  </header>
+
+  <!-- ===================================================== -->
+  <section class="flush">
+    <h2>What the project asks</h2>
+    <p>
+      A Decision Tree learns from labelled examples of both normal and attack
+      traffic. K-Means never sees an attack at all — it learns only what normal
+      looks like, and flags anything far from it. Both can block an attacker.
+      The question is what happens when the attack is one neither model was
+      trained on.
+    </p>
+    <p>
+      That framing matters because it is the part the original reference
+      project never tested. Showing that a model detects the attack it was
+      trained on proves very little; showing how each approach behaves on an
+      attack pattern absent from training is a real result, in either direction.
+    </p>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>Runtime architecture</h2>
+    <p>
+      Hosts send traffic through an OpenFlow switch toward a victim server. The
+      switch reports to the controller, which extracts features, classifies each
+      flow, and installs a drop rule when a flow is judged hostile. The loop that
+      matters is the one that closes: detection has to result in a rule that
+      changes what the switch does next.
+    </p>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 780 400" role="img"
+             aria-label="Normal hosts and attacker hosts send traffic through an OpenFlow switch to a victim server. The switch sends packet-in events and flow statistics up to the controller, which runs feature extraction and a classifier, and sends a Flow-Mod drop rule back down to the switch.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ar-atk" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--attack)"/>
+            </marker>
+            <marker id="ar-ctl" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--normal)"/>
+            </marker>
+          </defs>
+
+          <g font-family="Consolas, monospace" font-size="12" fill="currentColor">
+
+            <!-- controller -->
+            <rect x="286" y="16" width="250" height="86" fill="var(--wash)"
+                  stroke="var(--normal)" stroke-width="1.5"/>
+            <text x="411" y="38" text-anchor="middle" font-size="12.5"
+                  fill="var(--normal)" font-weight="bold">SDN CONTROLLER</text>
+            <text x="411" y="59" text-anchor="middle" font-size="11">feature extraction</text>
+            <text x="411" y="77" text-anchor="middle" font-size="11">Decision Tree │ K-Means</text>
+            <text x="411" y="94" text-anchor="middle" font-size="11">mitigation logic</text>
+
+            <!-- normal hosts -->
+            <rect x="20" y="150" width="104" height="26" fill="none" stroke="currentColor"/>
+            <text x="72" y="167" text-anchor="middle" font-size="11">host h1</text>
+            <rect x="20" y="186" width="104" height="26" fill="none" stroke="currentColor"/>
+            <text x="72" y="203" text-anchor="middle" font-size="11">host h2</text>
+            <rect x="20" y="222" width="104" height="26" fill="none" stroke="currentColor"/>
+            <text x="72" y="239" text-anchor="middle" font-size="11">host h3</text>
+            <text x="72" y="138" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">NORMAL</text>
+
+            <!-- attackers -->
+            <rect x="20" y="288" width="104" height="26" fill="none"
+                  stroke="var(--attack)" stroke-width="1.5"/>
+            <text x="72" y="305" text-anchor="middle" font-size="11"
+                  fill="var(--attack)">attacker a1</text>
+            <rect x="20" y="324" width="104" height="26" fill="none"
+                  stroke="var(--attack)" stroke-width="1.5"/>
+            <text x="72" y="341" text-anchor="middle" font-size="11"
+                  fill="var(--attack)">attacker a2</text>
+            <text x="72" y="276" text-anchor="middle" font-size="10"
+                  fill="var(--attack)">UDP + SYN FLOOD</text>
+
+            <!-- switch -->
+            <rect x="316" y="160" width="190" height="120" fill="none"
+                  stroke="currentColor" stroke-width="1.5"/>
+            <text x="411" y="184" text-anchor="middle" font-size="12.5"
+                  font-weight="bold">OPENFLOW SWITCH</text>
+            <line x1="332" y1="196" x2="490" y2="196" stroke="var(--rule)"/>
+            <text x="411" y="216" text-anchor="middle" font-size="11">flow table</text>
+            <text x="411" y="236" text-anchor="middle" font-size="11">+ packet / byte</text>
+            <text x="411" y="252" text-anchor="middle" font-size="11">counters (added)</text>
+            <text x="411" y="270" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">match &#8594; forward or drop</text>
+
+            <!-- victim -->
+            <rect x="640" y="196" width="118" height="48" fill="none"
+                  stroke="currentColor" stroke-width="1.5"/>
+            <text x="699" y="217" text-anchor="middle" font-size="11">victim</text>
+            <text x="699" y="233" text-anchor="middle" font-size="11">server</text>
+
+            <!-- host -> switch -->
+            <path d="M 124 163 L 300 196" stroke="currentColor" fill="none" marker-end="url(#ar)"/>
+            <path d="M 124 199 L 300 206" stroke="currentColor" fill="none" marker-end="url(#ar)"/>
+            <path d="M 124 235 L 300 216" stroke="currentColor" fill="none" marker-end="url(#ar)"/>
+            <path d="M 124 301 L 300 244" stroke="var(--attack)" stroke-width="1.8"
+                  fill="none" marker-end="url(#ar-atk)"/>
+            <path d="M 124 337 L 300 254" stroke="var(--attack)" stroke-width="1.8"
+                  fill="none" marker-end="url(#ar-atk)"/>
+
+            <!-- switch -> victim -->
+            <path d="M 506 220 L 636 220" stroke="currentColor" fill="none" marker-end="url(#ar)"/>
+            <text x="571" y="211" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">forwarded</text>
+
+            <!-- switch -> controller (telemetry) -->
+            <path d="M 372 160 L 372 106" stroke="var(--normal)" stroke-width="1.6"
+                  fill="none" marker-end="url(#ar-ctl)"/>
+            <text x="245" y="128" text-anchor="start" font-size="10"
+                  fill="var(--normal)">Packet-In + flow stats</text>
+
+            <!-- controller -> switch (mitigation) -->
+            <path d="M 456 106 L 456 156" stroke="var(--normal)" stroke-width="1.6"
+                  fill="none" marker-end="url(#ar-ctl)"/>
+            <text x="470" y="128" text-anchor="start" font-size="10"
+                  fill="var(--normal)">Flow-Mod: DROP</text>
+
+            <!-- blocked marker -->
+            <line x1="200" y1="272" x2="228" y2="300" stroke="var(--attack)" stroke-width="2.4"/>
+            <line x1="228" y1="272" x2="200" y2="300" stroke="var(--attack)" stroke-width="2.4"/>
+            <text x="214" y="322" text-anchor="middle" font-size="10"
+                  fill="var(--attack)">blocked after</text>
+            <text x="214" y="336" text-anchor="middle" font-size="10"
+                  fill="var(--attack)">detection</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        The control loop. Telemetry rises to the controller, a decision comes
+        back down as a flow rule, and the attacker's traffic stops at the switch
+        rather than reaching the victim. Everything above the switch is our code;
+        the switch and hosts come from the OpenFlow and INET models.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>The two-phase pipeline</h2>
+    <p>
+      Training happens in Python, where scikit-learn is; detection happens in
+      C++, inside the simulator. These are separate programs that never run at
+      the same time, so the trained model has to cross the boundary as source
+      code. <code>train.py</code> writes two C++ headers that are compiled into
+      the controller.
+    </p>
+    <p>
+      This is why both models were chosen. A Decision Tree becomes nested
+      <code>if</code>/<code>else</code> statements; K-Means becomes a handful of
+      centroid coordinates and a distance check. Neither needs a machine
+      learning library at simulation time — which is what keeps the C++ side
+      small enough to finish.
+    </p>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 780 300" role="img"
+             aria-label="Offline phase: an OMNeT++ run produces a features CSV, which train.py uses to fit a Decision Tree and a K-Means model, exporting DecisionTree.h and KMeansModel.h. Online phase: those two headers are compiled into the controller, which classifies each flow during simulation and emits a drop rule.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ar2c" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--normal)"/>
+            </marker>
+          </defs>
+          <g font-family="Consolas, monospace" font-size="11" fill="currentColor">
+
+            <text x="16" y="26" font-size="10" letter-spacing="1.5"
+                  fill="var(--ink-faint)">PHASE 1 — OFFLINE, IN PYTHON</text>
+
+            <rect x="16" y="40" width="130" height="46" fill="none" stroke="currentColor"/>
+            <text x="81" y="60" text-anchor="middle">OMNeT++ run</text>
+            <text x="81" y="76" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">traffic + attacks</text>
+
+            <rect x="196" y="40" width="130" height="46" fill="none" stroke="currentColor"/>
+            <text x="261" y="60" text-anchor="middle">features.csv</text>
+            <text x="261" y="76" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">one row per flow</text>
+
+            <rect x="376" y="40" width="130" height="46" fill="none" stroke="currentColor"/>
+            <text x="441" y="60" text-anchor="middle">train.py</text>
+            <text x="441" y="76" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">scikit-learn</text>
+
+            <rect x="556" y="32" width="200" height="30" fill="var(--wash)"
+                  stroke="var(--normal)"/>
+            <text x="656" y="52" text-anchor="middle" fill="var(--normal)">DecisionTree.h</text>
+            <rect x="556" y="68" width="200" height="30" fill="var(--wash)"
+                  stroke="var(--normal)"/>
+            <text x="656" y="88" text-anchor="middle" fill="var(--normal)">KMeansModel.h</text>
+
+            <path d="M 146 63 L 192 63" stroke="currentColor" fill="none" marker-end="url(#ar2)"/>
+            <path d="M 326 63 L 372 63" stroke="currentColor" fill="none" marker-end="url(#ar2)"/>
+            <path d="M 506 63 L 552 63" stroke="currentColor" fill="none" marker-end="url(#ar2)"/>
+
+            <!-- crossing -->
+            <path d="M 656 102 L 656 150 L 300 150 L 300 186" stroke="var(--normal)"
+                  stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ar2c)"/>
+            <text x="470" y="142" text-anchor="middle" font-size="10.5"
+                  fill="var(--normal)">#include — compiled into the simulator</text>
+
+            <line x1="16" y1="168" x2="764" y2="168" stroke="var(--rule)"/>
+
+            <text x="16" y="196" font-size="10" letter-spacing="1.5"
+                  fill="var(--ink-faint)">PHASE 2 — ONLINE, IN C++</text>
+
+            <rect x="222" y="214" width="156" height="46" fill="none"
+                  stroke="currentColor" stroke-width="1.5"/>
+            <text x="300" y="234" text-anchor="middle">controller app</text>
+            <text x="300" y="250" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">classifies each flow</text>
+
+            <rect x="446" y="214" width="150" height="46" fill="none"
+                  stroke="var(--attack)" stroke-width="1.5"/>
+            <text x="521" y="234" text-anchor="middle" fill="var(--attack)">Flow-Mod</text>
+            <text x="521" y="250" text-anchor="middle" font-size="10"
+                  fill="var(--attack)">DROP on in_port</text>
+
+            <rect x="16" y="214" width="150" height="46" fill="none" stroke="currentColor"/>
+            <text x="91" y="234" text-anchor="middle">live flow stats</text>
+            <text x="91" y="250" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">from the switch</text>
+
+            <path d="M 166 237 L 218 237" stroke="currentColor" fill="none" marker-end="url(#ar2)"/>
+            <path d="M 378 237 L 442 237" stroke="currentColor" fill="none" marker-end="url(#ar2)"/>
+            <text x="410" y="228" text-anchor="middle" font-size="10"
+                  fill="var(--ink-faint)">if attack</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        The model crosses from Python to C++ as generated source, not as a saved
+        model file. The simulator therefore runs exactly the decision logic that
+        was evaluated offline, with no runtime ML dependency.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>Feature design, and why it is per-flow</h2>
+    <p>
+      The reference project computed statistics per switch per time window. That
+      can say <em>“this switch is under attack”</em> but not <em>which port to
+      block</em> — which is why it needed a separate hand-written rule to find
+      the attacker. Here every row describes a single flow, so a positive
+      classification already names the switch, source and ingress port that the
+      drop rule needs.
+    </p>
+    <p>
+      It also makes the metrics mean something. A false positive is a legitimate
+      flow that got blocked, which connects directly to the throughput and
+      packet-loss numbers. With window-level rows, a false positive is just a
+      misclassified time window and connects to nothing.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Meaning</th>
+            <th>Why it separates attack from normal</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">pkt_rate</td><td>packets per second</td><td>floods are high volume — but so is a flash crowd</td></tr>
+          <tr><td class="mono">byte_rate</td><td>bytes per second</td><td>separates many-small-packets from bulk transfer</td></tr>
+          <tr><td class="mono">avg_pkt_size</td><td>bytes per packet</td><td>SYN floods are tiny packets; downloads are large</td></tr>
+          <tr><td class="mono">duration</td><td>seconds the flow has lived</td><td>spoofed flows die instantly; real sessions persist</td></tr>
+          <tr><td class="mono">pair_flow</td><td>1 if a reverse flow exists</td><td>real conversations have replies; floods do not</td></tr>
+          <tr><td class="mono">port_src_count</td><td>distinct source IPs on that ingress port</td><td>source spoofing inflates this — but so does an uplink port</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      Each feature is individually defeatable, which is the point. No single one
+      is a giveaway, so the models must combine them — and the identity columns
+      (<code>switch_id</code>, <code>src_ip</code>, <code>in_port</code>) travel
+      alongside without ever being fed to the model.
+    </p>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>The two models</h2>
+    <p>
+      The difference is not the algorithm, it is what each one is allowed to see
+      during training.
+    </p>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 720 260" role="img"
+             aria-label="Left panel: the Decision Tree trains on both normal and attack samples with labels. Right panel: K-Means trains only on normal samples and draws a boundary around them; attack samples are absent from its training entirely. Both then classify the same new flow.">
+          <g font-family="Consolas, monospace" font-size="11" fill="currentColor">
+
+            <!-- LEFT: supervised -->
+            <text x="30" y="24" font-size="10.5" letter-spacing="1.2"
+                  fill="var(--ink-faint)">SUPERVISED — DECISION TREE</text>
+            <rect x="30" y="36" width="290" height="140" fill="none"
+                  stroke="currentColor" stroke-dasharray="4 3"/>
+            <text x="175" y="196" text-anchor="middle" font-size="10.5">
+              training set contains BOTH classes
+            </text>
+            <text x="175" y="212" text-anchor="middle" font-size="10.5"
+                  fill="var(--ink-faint)">learns the boundary between them</text>
+
+            <circle cx="72"  cy="72"  r="5" fill="currentColor"/>
+            <circle cx="104" cy="96"  r="5" fill="currentColor"/>
+            <circle cx="80"  cy="126" r="5" fill="currentColor"/>
+            <circle cx="130" cy="66"  r="5" fill="currentColor"/>
+            <circle cx="118" cy="140" r="5" fill="currentColor"/>
+            <circle cx="148" cy="110" r="5" fill="currentColor"/>
+
+            <path d="M 236 60 l 12 12 M 248 60 l -12 12" stroke="var(--attack)" stroke-width="2.2"/>
+            <path d="M 268 92 l 12 12 M 280 92 l -12 12" stroke="var(--attack)" stroke-width="2.2"/>
+            <path d="M 240 124 l 12 12 M 252 124 l -12 12" stroke="var(--attack)" stroke-width="2.2"/>
+            <path d="M 282 140 l 12 12 M 294 140 l -12 12" stroke="var(--attack)" stroke-width="2.2"/>
+
+            <line x1="196" y1="44" x2="196" y2="168" stroke="var(--normal)" stroke-width="2"/>
+            <text x="196" y="36" text-anchor="middle" font-size="10"
+                  fill="var(--normal)">learned split</text>
+
+            <!-- RIGHT: unsupervised -->
+            <text x="400" y="24" font-size="10.5" letter-spacing="1.2"
+                  fill="var(--ink-faint)">UNSUPERVISED — K-MEANS</text>
+            <rect x="400" y="36" width="290" height="140" fill="none"
+                  stroke="currentColor" stroke-dasharray="4 3"/>
+            <text x="545" y="196" text-anchor="middle" font-size="10.5">
+              training set contains ONLY normal
+            </text>
+            <text x="545" y="212" text-anchor="middle" font-size="10.5"
+                  fill="var(--ink-faint)">flags whatever falls outside it</text>
+
+            <circle cx="470" cy="76"  r="5" fill="currentColor"/>
+            <circle cx="500" cy="100" r="5" fill="currentColor"/>
+            <circle cx="478" cy="128" r="5" fill="currentColor"/>
+            <circle cx="522" cy="70"  r="5" fill="currentColor"/>
+            <circle cx="512" cy="140" r="5" fill="currentColor"/>
+            <circle cx="542" cy="108" r="5" fill="currentColor"/>
+            <circle cx="506" cy="106" r="46" fill="none" stroke="var(--normal)" stroke-width="2"/>
+            <text x="506" y="52" text-anchor="middle" font-size="10"
+                  fill="var(--normal)">distance threshold</text>
+
+            <path d="M 630 84 l 12 12 M 642 84 l -12 12" stroke="var(--attack)"
+                  stroke-width="2.2" opacity="0.32"/>
+            <path d="M 656 124 l 12 12 M 668 124 l -12 12" stroke="var(--attack)"
+                  stroke-width="2.2" opacity="0.32"/>
+            <text x="649" y="160" text-anchor="middle" font-size="9.5"
+                  fill="var(--attack)" opacity="0.75">never seen</text>
+            <text x="649" y="172" text-anchor="middle" font-size="9.5"
+                  fill="var(--attack)" opacity="0.75">in training</text>
+
+            <line x1="360" y1="36" x2="360" y2="220" stroke="var(--rule)"/>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        Filled circles are normal flows, crosses are attacks. The Decision Tree
+        is shown both classes and learns where to cut between them; K-Means is
+        shown only the left cluster and calls anything beyond a distance
+        threshold anomalous. That asymmetry is what the whole experiment tests.
+      </figcaption>
+    </figure>
+
+    <h3>The methodology detail that decides whether this is valid</h3>
+    <p>
+      K-Means needs a distance threshold, and where that number comes from is
+      the whole ballgame. It is taken as the 99th percentile of the distances of
+      the <strong>normal training data only</strong>. If it were tuned on data
+      containing attacks, the model would be quietly supervised and the
+      comparison would be meaningless. An examiner will ask about this, so it is
+      stated explicitly in <code>train.py</code>.
+    </p>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>Current state</h2>
+
+    <ul class="status">
+      <li><span class="tag done">Working</span><span>OMNeT++ 6.0.2, INET 3.8.5 and the OpenFlow model all compile and run</span></li>
+      <li><span class="tag done">Working</span><span>Project topology, UDP flood and low-rate flood, labelled feature collection</span></li>
+      <li><span class="tag done">Working</span><span>Flow measurement and blocking, with the vendored model left untouched</span></li>
+      <li><span class="tag done">Working</span><span>Both models trained on simulator data and running inside the controller</span></li>
+      <li><span class="tag done">Working</span><span>Six configurations × five seeds, aggregated and plotted</span></li>
+      <li><span class="tag gap">Not done</span><span>A genuinely spoofed SYN flood — INET's TCP does not work over this path, and forged source addresses would need a raw-IP injector it does not provide</span></li>
+    </ul>
+
+    <h3>Results</h3>
+    <p>
+      Mean over five seeded repetitions of 60 s each. Both models are trained on
+      the full-rate attack <em>only</em>; the low-rate rows are an attack neither
+      of them has ever seen.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Attack</th>
+            <th>Detector</th>
+            <th class="num">Victim received</th>
+            <th class="num">Blocked</th>
+            <th class="num">Recall</th>
+            <th class="num">False positives</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>full-rate</td><td>none</td><td class="num">99,390</td><td class="num">0</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td>full-rate</td><td>Decision Tree</td><td class="num">10,078</td><td class="num">89,313</td><td class="num">0.92</td><td class="num">0.0</td></tr>
+          <tr><td>full-rate</td><td>K-Means</td><td class="num">9,223</td><td class="num">91,446</td><td class="num">0.98</td><td class="num">8.8</td></tr>
+          <tr><td>low-rate</td><td>none</td><td class="num">4,398</td><td class="num">0</td><td class="num">—</td><td class="num">—</td></tr>
+          <tr><td>low-rate</td><td>Decision Tree</td><td class="num">4,398</td><td class="num">0</td><td class="num">0.00</td><td class="num">0.0</td></tr>
+          <tr><td>low-rate</td><td>K-Means</td><td class="num">688</td><td class="num">4,610</td><td class="num">0.98</td><td class="num">7.0</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      On the attack it was trained on, the Decision Tree is excellent: 0.92
+      recall and not one legitimate flow blocked. On an attack twenty-five times
+      quieter that it never saw, it catches <strong>nothing</strong> — and the
+      victim receives exactly as many packets as it would with no protection at
+      all. K-Means holds at 0.98 across both, because knowing what normal looks
+      like does not depend on having met the attack.
+    </p>
+    <p>
+      It pays for that with roughly seven to nine legitimate flows blocked per
+      run. That is the trade the project set out to measure, and it is visible in
+      the network rather than asserted in a table. Blocks lapse after ten
+      seconds, so a false positive costs a bounded amount of traffic.
+    </p>
+
+    <h3>Where the supervised model breaks</h3>
+    <p>
+      Sweeping the attack rate across five intensities, five seeds each, with no
+      retraining, shows there is no gradual decline to find:
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Attack rate</th>
+            <th class="num">Decision Tree recall</th>
+            <th class="num">K-Means recall</th>
+            <th class="num">K-Means false positives</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>1x — the trained rate</td><td class="num">0.92</td><td class="num">0.98</td><td class="num">8.8</td></tr>
+          <tr><td>1/5</td><td class="num">0.00</td><td class="num">0.96</td><td class="num">8.4</td></tr>
+          <tr><td>1/10</td><td class="num">0.00</td><td class="num">0.98</td><td class="num">9.2</td></tr>
+          <tr><td>1/25</td><td class="num">0.00</td><td class="num">0.98</td><td class="num">7.0</td></tr>
+          <tr><td>1/50</td><td class="num">0.00</td><td class="num">0.96</td><td class="num">8.8</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>
+      The reason is legible in the generated model, which is the whole argument
+      for exporting it as source rather than as an opaque file. The entire
+      trained tree is one comparison — <code>byte_rate &lt;= 116465.5</code>.
+      The full-rate attack runs at about 345,000 B/s and sits above it; at
+      one-fifth rate it is about 69,000 B/s and sits below, so every attack flow
+      is classified normal. The model learned a single number, and any attack on
+      the wrong side of it is invisible.
+    </p>
+    <p>
+      A detail worth carrying into the write-up: at 1/5 rate the Decision Tree
+      lets 20,210 packets reach the victim, roughly twice as many as at full
+      rate. It defends worse against the weaker attack, because against the
+      loud one it at least blocked something.
+    </p>
+
+    <div class="note">
+      <span class="label">Accuracy is the wrong headline here</span>
+      <p>
+        Facing the low-rate attack the Decision Tree records TP 0, FP 0, FN 77,
+        TN 490 — an <strong>accuracy of 86.4%</strong> while catching nothing at
+        all and delivering exactly as many packets to the victim as no defence.
+        About 86% of flows are normal, so flagging nothing scores 86% for free.
+      </p>
+      <p>
+        There is also a subtlety in recall itself: successful mitigation removes
+        the traffic being measured. In the low-rate runs the Decision Tree
+        recorded 567 flow observations and K-Means only 419, because K-Means
+        blocked the attackers and the flood stopped being reported. The two
+        recalls therefore rest on different denominators. The metric free of
+        this problem is the network outcome — packets reaching the victim — which
+        is why it gets its own figure.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">Three corrections worth recording</span>
+      <p>
+        Every one of these produced plausible-looking numbers that meant nothing,
+        and each was caught by inspecting the dataset rather than by the
+        simulation failing.
+      </p>
+      <p>
+        <strong>Packet size gave the game away.</strong> An early synthetic set
+        had normal packets at 400–1400 bytes and attack packets at 54–300, with
+        no overlap, so one threshold solved it and both models scored 100%. The
+        tell was feature importance: <code>avg_pkt_size</code> at 1.000, every
+        other feature at zero.
+      </p>
+      <p>
+        <strong><code>pair_flow</code> read 1 for everything.</strong> Flows were
+        keyed without transport ports, so a client's answered echo traffic and
+        its one-way telemetry merged into a single flow that inherited the
+        replies. Ports are now part of the key — which is what a flow means in
+        OpenFlow terms anyway.
+      </p>
+      <p>
+        <strong>Detection latency came out negative.</strong> K-Means raised a
+        false positive before the attack had started, and latency was being
+        measured from the first detection of any kind. It now measures to the
+        first <em>correct</em> detection.
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>The missing flow statistics, and how they were solved</h2>
+    <p>
+      The upstream model ships no flow-statistics message — no
+      <code>OFP_Stats_Request</code>, no flow-stats reply — and
+      <code>OF_FlowTableEntry</code> stores only <code>creationTime</code>,
+      <code>lastMatched</code> and the two timeouts. There is no packet counter
+      and no byte counter anywhere in the flow table, so three of the six
+      features had nothing to read.
+    </p>
+    <p>
+      The obvious response is to patch the model and maintain a fork. That
+      turned out to be unnecessary. <code>OF_Switch::handleMessage</code> is
+      virtual and its members are protected, so <code>DDoSSwitch</code>
+      subclasses it and does everything from our own project: taps every
+      data-plane frame, keeps per-flow counters, and drops blocked traffic
+      before the base class ever forwards it. The report reaches the controller
+      on the OpenFlow vendor channel (<code>OFPT_VENDOR</code>), which the
+      controller already forwards to apps as a <code>PacketExperimenter</code>
+      signal. <strong>The vendored model is an unmodified checkout.</strong>
+    </p>
+    <p>
+      Two things fell out of building it this way. First, with flow rules
+      properly installed the controller sees <code>numPacketIn = 7</code> out of
+      roughly 41,000 packets — a detector reading packet-in events would be
+      almost completely blind, so switch-side measurement is required rather
+      than merely tidier. Second, a flow-mod cannot express a drop at all: the
+      switch reads an output port straight out of the matched entry and has no
+      notion of an empty action list, and <code>disablePorts()</code> only
+      affects flooding, not forwarding. The drop is therefore implemented in
+      <code>DDoSSwitch</code> and driven by a <code>DDoSBlockCommand</code>.
+    </p>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>Software stack</h2>
+    <p>
+      Versions are pinned deliberately. The OpenFlow model targets OMNeT++
+      6.0.2 with INET 3.8.5, and newer releases of either break it — INET 4.x
+      restructured the source tree entirely, and OMNeT++ 6.2 and later ship a
+      stricter clang toolchain.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Version</th><th>Role</th><th>Location</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>OMNeT++</td><td class="mono">6.0.2</td><td>simulation kernel and IDE</td><td class="mono">D:\omnetpp-6.0.2</td></tr>
+          <tr><td>INET</td><td class="mono">3.8.5</td><td>hosts, Ethernet, TCP/IP, applications</td><td class="mono">D:\omnetpp-workspace\inet</td></tr>
+          <tr><td>OpenFlow</td><td class="mono">CoRE-RG</td><td>switch, controller, OpenFlow messages</td><td class="mono">D:\omnetpp-workspace\openflow</td></tr>
+          <tr><td>scikit-learn</td><td class="mono">1.9.0</td><td>model training, offline only</td><td class="mono">project <code>.venv</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Things that cost time, recorded so they are not repeated</h3>
+    <ul>
+      <li>The NED path needs <em>both</em> <code>openflow/src</code> and <code>openflow/scenarios</code>; the scenarios folder is its own package root.</li>
+      <li>The DLL directories must be on <code>PATH</code>, or Windows cannot resolve <code>libINET.dll</code> when the simulation loads.</li>
+      <li>The bundled <code>7za.exe</code> in 6.0.2 is old and rejects the <code>-bso0 -bsp0 -bb0</code> quiet flags with “incorrect command line”.</li>
+      <li><code>modifiedInetFiles/openflow-inet-hack.patch</code> targets INET 2.x paths and does not apply to 3.8.5. It is not needed to compile; revisit only if IP auto-configuration misbehaves on switch interfaces.</li>
+      <li>The <code>opp_featuretool</code> errors about missing tutorial and showcase NED packages during the INET build are harmless.</li>
+    </ul>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>Repository layout</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Path</th><th>Contents</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">ml/schema.py</td><td>feature and column definitions shared by every script</td></tr>
+          <tr><td class="mono">ml/make_synthetic.py</td><td>generates stand-in flow data with deliberately overlapping classes</td></tr>
+          <tr><td class="mono">ml/train.py</td><td>trains both models, evaluates them, exports the C++ headers</td></tr>
+          <tr><td class="mono">src/DecisionTree.h</td><td>generated — nested if/else, returns 1 for attack</td></tr>
+          <tr><td class="mono">src/KMeansModel.h</td><td>generated — centroids, scaler constants, distance threshold</td></tr>
+          <tr><td class="mono">simulations/</td><td>NED topology and omnetpp.ini run configurations</td></tr>
+          <tr><td class="mono">data/</td><td>training and test CSV sets</td></tr>
+          <tr><td class="mono">results/</td><td>metrics and graphs</td></tr>
+          <tr><td class="mono">docs/setup.md</td><td>installation steps and the working run command</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Reproducing the ML side</h3>
+<pre><code>cd ml
+python make_synthetic.py --out ../data/train.csv
+python make_synthetic.py --out ../data/test_lowrate.csv --intensity 0.2 --seed 7
+python train.py --train ../data/train.csv --test ../data/test_lowrate.csv</code></pre>
+    <p>
+      When the simulator starts producing real data, the same
+      <code>train.py</code> command runs against it unchanged — only the input
+      file differs.
+    </p>
+  </section>
+
+  <!-- ===================================================== -->
+  <section>
+    <h2>What is left</h2>
+    <p>
+      Two things were planned and are not in the build, both for reasons worth
+      stating rather than working around.
+    </p>
+    <p>
+      <strong>A real SYN flood.</strong> INET's TCP does not work over this path
+      at all — a connection establishes and then the first data request never
+      reaches the server application. This was verified against the
+      flood-everything controller, so it is not the OpenFlow forwarding. Normal
+      client traffic uses UDP echo instead, which gives the same bidirectional
+      property. A genuinely spoofed half-open SYN flood would additionally need
+      a raw-IP injector that INET does not provide; claiming one would be
+      dishonest, so the second attack type is a low-rate flood — which turned
+      out to be the more informative experiment anyway.
+    </p>
+    <p>
+      <strong>Source spoofing.</strong> Same reason. Instead,
+      <code>port_src_count</code> gets its variation honestly from the access
+      switch, which puts several real hosts on one ingress port.
+    </p>
+    <p>
+      Natural extensions from here: more attack intensities to find where each
+      model breaks, more seeds for tighter confidence intervals, and a larger
+      topology to see whether the result holds when a port carries far more
+      mixed traffic.
+    </p>
+  </section>
+
+</div>

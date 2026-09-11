@@ -1,0 +1,26 @@
+{
+  "seen": {
+    "Decision Tree (supervised)": {
+      "accuracy": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "fpr": 0.0,
+      "tp": 19,
+      "tn": 123,
+      "fp": 0,
+      "fn": 0
+    },
+    "K-Means (unsupervised)": {
+      "accuracy": 0.9929577464788732,
+      "precision": 0.95,
+      "recall": 1.0,
+      "f1": 0.9743589743589743,
+      "fpr": 0.008130081300813009,
+      "tp": 19,
+      "tn": 122,
+      "fp": 1,
+      "fn": 0
+    }
+  }
+}

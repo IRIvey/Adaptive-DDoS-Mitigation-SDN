@@ -1,0 +1,38 @@
+<config>
+  <!--
+    Addresses are pinned explicitly, one host at a time. This looks verbose
+    next to a wildcard like 192.168.x.x, but the wildcard form does not work
+    here and the reason is worth knowing.
+
+    IPv4NetworkConfigurator decides subnets by walking the topology, and it
+    does not recognise an OpenFlow switch as a bridge. It therefore treats
+    every host-to-switch cable as its own link and hands each one a separate
+    /30 - so the hosts end up on 192.168.0.1/30, .5/30, .9/30 and cannot reach
+    each other even though a layer-2 switch sits between them. Constraining the
+    mask instead makes it fail outright with "failed to find address prefix",
+    because it still wants one subnet per link.
+
+    (The model ships modifiedInetFiles/openflow-inet-hack.patch to teach the
+    configurator about OpenFlow switches, but it targets INET 2.x paths and
+    does not apply to 3.8.5. Explicit addresses avoid needing it.)
+
+    Fixed addresses also make the logs and the feature CSV readable: anything
+    from 192.168.1.2x is an attacker, by construction.
+  -->
+
+  <!--
+    All data-plane hosts share 192.168.1.0/24. The host part is left as 'x' so
+    the configurator picks it: writing one rule per host with a literal address
+    does not work, because the hosts='**.normalHost[0]' index is not matched
+    per-instance and every client ends up claiming the same address.
+
+    Hosts are therefore identified in results by module path
+    (normalHost[i] / attacker[i] / victim), not by address.
+  -->
+  <interface hosts='**.normalHost[*] **.attacker[*] **.victim'
+             names='eth0'
+             address='192.168.1.x' netmask='255.255.255.0'/>
+
+  <!-- control plane: switch to controller, kept off the data-plane subnet -->
+  <interface hosts='**' names='eth0' address='10.x.x.x' netmask='255.x.x.x'/>
+</config>
