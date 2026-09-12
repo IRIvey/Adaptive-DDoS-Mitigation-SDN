@@ -21,7 +21,11 @@ import pandas as pd
 # Categorical slots 1 and 2 of the validated default palette. The pair clears
 # the CVD and normal-vision floors on this surface; the third slot (aqua) was
 # dropped because it sits under 3:1 contrast on a light background.
-SERIES = {"DecisionTree": "#2a78d6", "KMeans": "#eb6834"}
+# Categorical slots 1-3 of the validated default palette, in fixed order. The
+# set clears the colour-blind and normal-vision separation gates; slot 3 sits
+# under 3:1 contrast on this surface, which is allowed only because every bar
+# carries a direct value label.
+SERIES = {"DecisionTree": "#2a78d6", "KMeans": "#eb6834", "Hybrid": "#1baf7a"}
 BASELINE = "#898781"        # no protection: a reference, not a series
 SURFACE = "#fcfcfb"
 INK = "#0b0b0b"
@@ -74,8 +78,9 @@ def bar_labels(ax, bars, errs=None, fmt="{:.2f}"):
 
 
 def plot_recall(df, out):
-    fig, ax = plt.subplots(figsize=(7.2, 4.4))
-    width = 0.34
+    fig, ax = plt.subplots(figsize=(7.6, 4.4))
+    n = len(SERIES)
+    width = 0.72 / n
 
     for i, (name, color) in enumerate(SERIES.items()):
         means, errs = [], []
@@ -83,8 +88,8 @@ def plot_recall(df, out):
             s = df[(df.attack == atk) & (df.detector == name)]["recall"].dropna()
             means.append(s.mean() if len(s) else 0.0)
             errs.append(s.std() if len(s) > 1 else 0.0)
-        # 2px visual gap between adjacent bars
-        xs = [x + (i - 0.5) * (width + 0.02) for x in range(len(ATTACKS))]
+        # centred group, with a small visual gap between adjacent bars
+        xs = [x + (i - (n - 1) / 2) * (width + 0.02) for x in range(len(ATTACKS))]
         bars = ax.bar(xs, means, width, label=name, color=color,
                       yerr=errs, capsize=3,
                       error_kw={"ecolor": INK_MUTED, "elinewidth": 1})
@@ -100,7 +105,7 @@ def plot_recall(df, out):
                  fontsize=12, color=INK, loc="left", pad=34)
     # Legend above the plot: inside it, the upper right sits directly on top of
     # the low-rate K-Means bar.
-    ax.legend(frameon=False, fontsize=10, ncol=2,
+    ax.legend(frameon=False, fontsize=10, ncol=3,
               loc="lower left", bbox_to_anchor=(0, 1.005))
     style_axes(ax)
     fig.tight_layout()
@@ -109,10 +114,11 @@ def plot_recall(df, out):
 
 
 def plot_traffic(df, out):
-    fig, ax = plt.subplots(figsize=(7.2, 4.4))
-    width = 0.26
+    fig, ax = plt.subplots(figsize=(7.6, 4.4))
     groups = [("no protection", BASELINE, "none")] + \
-             [(n, c, n) for n, c in SERIES.items()]
+             [(k, c, k) for k, c in SERIES.items()]
+    n = len(groups)
+    width = 0.76 / n
 
     for i, (label, color, det) in enumerate(groups):
         means, errs = [], []
@@ -120,7 +126,7 @@ def plot_traffic(df, out):
             s = df[(df.attack == atk) & (df.detector == det)]["victim_rcvd"].dropna()
             means.append(s.mean() if len(s) else 0.0)
             errs.append(s.std() if len(s) > 1 else 0.0)
-        xs = [x + (i - 1) * (width + 0.02) for x in range(len(ATTACKS))]
+        xs = [x + (i - (n - 1) / 2) * (width + 0.02) for x in range(len(ATTACKS))]
         bars = ax.bar(xs, means, width, label=label, color=color,
                       yerr=errs, capsize=3,
                       error_kw={"ecolor": INK_MUTED, "elinewidth": 1})
@@ -132,7 +138,7 @@ def plot_traffic(df, out):
     ax.set_ylim(0, 118000)
     ax.set_title("Traffic that still gets through", fontsize=12, color=INK,
                  loc="left", pad=34)
-    ax.legend(frameon=False, fontsize=10, ncol=3,
+    ax.legend(frameon=False, fontsize=10, ncol=4,
               loc="lower left", bbox_to_anchor=(0, 1.005))
     style_axes(ax)
     fig.tight_layout()

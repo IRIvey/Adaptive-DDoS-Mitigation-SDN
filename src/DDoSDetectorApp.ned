@@ -15,7 +15,20 @@ simple DDoSDetectorApp like AbstractControllerApp
         // collect - label from ground truth and write the training CSV, no blocking
         // dt      - classify with the exported Decision Tree
         // kmeans  - classify with the exported K-Means detector
+        // hybrid  - tree blocks immediately; K-Means must agree with itself
+        //           across `confirmations` consecutive reports before blocking
+        // cost    - pick the action with the lower expected cost, using the
+        //           K-Means distance as a confidence
         string mode = default("collect");
+
+        // Cost mode only. What avoiding one wrongly blocked flow is worth, in
+        // bytes of attack traffic. Higher = more cautious about blocking.
+        double falseBlockCost = default(200000);
+
+        // Hybrid only. Consecutive reports a flow must stay anomalous before
+        // K-Means alone is allowed to block it. Higher = fewer false positives,
+        // slower detection. 1 makes hybrid behave like plain kmeans.
+        int confirmations = default(3);
 
         bool writeCsv = default(false);
         string csvFile = default("../data/flows.csv");

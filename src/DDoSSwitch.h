@@ -106,6 +106,29 @@ class DDoSSwitch : public openflow::OF_Switch
     bool isBlocked(uint32_t inPort, uint32_t srcIp);
 
     /**
+     * Tint a host's icon red while it is blocked, and clear it when the block
+     * lapses. Purely for the GUI - without it the mitigation is invisible on
+     * screen, because a dropped packet simply stops existing. No effect when
+     * running headless.
+     */
+    void setHostAlarm(uint32_t srcIp, bool blocked);
+
+    /** Show the live block count and dropped-frame total under the switch. */
+    void refreshBlockDisplay();
+
+    /**
+     * Colour each data-plane link by how much traffic is physically on it.
+     * Blocked frames count too: an attacker keeps transmitting after it is
+     * blocked, and the cable should show that even though nothing gets
+     * forwarded. Only the line-style tag is touched, so the channel's own
+     * throughput label is left intact.
+     */
+    void colourLinks();
+
+    /** Bytes seen on each ingress port during the current interval. */
+    std::map<uint32_t, long> portBytes;
+
+    /**
      * Pull addresses, protocol and transport ports out of an Ethernet frame.
      * Returns false for anything that is not IPv4 (ARP, LLDP). Ports come back
      * as 0 for protocols that have none, such as ICMP.

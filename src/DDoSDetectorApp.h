@@ -2,8 +2,10 @@
 #define SDNDDOS_DDOSDETECTORAPP_H_
 
 #include <fstream>
+#include <map>
 #include <set>
 #include <string>
+#include <utility>
 
 #include <omnetpp.h>
 
@@ -33,10 +35,50 @@ class DDoSDetectorApp : public openflow::AbstractControllerApp
     virtual ~DDoSDetectorApp();
 
   protected:
-    enum Mode { MODE_COLLECT, MODE_DT, MODE_KMEANS };
+    enum Mode { MODE_COLLECT, MODE_DT, MODE_KMEANS, MODE_HYBRID, MODE_COST };
+
+    /**
+     * Cost mode: what it is worth avoiding one wrongly blocked flow, expressed
+     * in bytes of attack traffic. Blocking is chosen when
+     *
+     *     P(attack) x bytes it would deliver  >  P(normal) x falseBlockCost
+     *
+     * Because the left side scales with the flow's own rate, a loud suspicious
+     * flow is blocked on weaker evidence than a quiet one - which is the whole
+     * point of deciding by expected cost instead of a fixed threshold.
+     */
+    double falseBlockCost = 200000.0;
 
     Mode mode = MODE_COLLECT;
     double blockDuration = 10.0;
+
+    /**
+     * Hybrid mode: how many consecutive reports a flow must be flagged by
+     * K-Means alone before it is blocked.
+     *
+     * The two detectors fail in opposite directions - the tree never raises a
+     * false positive but misses attacks it was not trained on, while K-Means
+     * catches those but flags some legitimate flows. A false positive tends to
+     * be one odd interval from a bursty client; a real attack stays anomalous
+     * interval after interval. Requiring agreement across time is what
+     * separates them. The cost is detection latency.
+     */
+    int confirmations = 3;
+    std::map<std::pair<uint32_t, uint32_t>, int> suspicion;
+
+    long blocksFromTree = 0;
+    long blocksFromKMeans = 0;
+
+    /**
+     * Large caption drawn on the network canvas, so which detector is running
+     * and what it is doing is readable from across a room. The canvas owns it
+     * once added.
+     */
+    omnetpp::cTextFigure *banner = nullptr;
+    omnetpp::simtime_t lastDetection = -1;
+
+    void updateBanner();
+    const char *modeName() const;
     bool writeCsv = false;
     std::string csvPath;
     std::ofstream csv;

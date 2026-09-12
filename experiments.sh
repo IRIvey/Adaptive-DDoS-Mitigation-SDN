@@ -16,7 +16,8 @@ OUT="$PROJ/results/experiments.csv"
 
 mkdir -p "$PROJ/results"
 
-CONFIGS="NoProtection DecisionTree KMeans LowRateFlood LowRate_DT LowRate_KMeans"
+CONFIGS="NoProtection DecisionTree KMeans Hybrid CostRule \
+         LowRateFlood LowRate_DT LowRate_KMeans LowRate_Hybrid LowRate_Cost"
 
 pick() {   # pick <file> <scalar name>  -> value or empty
     grep -m1 -E "[[:space:]]$2 " "$1" 2>/dev/null | awk '{print $NF}'
@@ -34,6 +35,8 @@ for cfg in $CONFIGS; do
     case "$cfg" in
         *DT|DecisionTree) detector="DecisionTree" ;;
         *KMeans)          detector="KMeans" ;;
+        *Hybrid)          detector="Hybrid" ;;
+        *Cost|CostRule)   detector="Cost" ;;
         *)                detector="none" ;;
     esac
 

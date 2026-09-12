@@ -1,0 +1,790 @@
+<title>SDN DDoS — Code Guide</title>
+
+<style>
+  :root {
+    --paper:      #F4F6F5;
+    --surface:    #FFFFFF;
+    --ink:        #121A1B;
+    --ink-soft:   #4A5A5D;
+    --ink-faint:  #7C8C8E;
+    --rule:       #D2DAD9;
+    --normal:     #0F6E7A;
+    --attack:     #A3402F;
+    --wash:       rgba(15, 110, 122, 0.07);
+    --attack-wash:rgba(163, 64, 47, 0.08);
+
+    --font-display: "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+    --font-body: "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: "Cascadia Mono", Consolas, "Liberation Mono", ui-monospace, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0E1414; --surface:#151D1D; --ink:#E7EDEC; --ink-soft:#9DAEAE;
+      --ink-faint:#6E8080; --rule:#27312F; --normal:#57C6D2; --attack:#E4907A;
+      --wash:rgba(87,198,210,0.10); --attack-wash:rgba(228,144,122,0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+      --paper:#0E1414; --surface:#151D1D; --ink:#E7EDEC; --ink-soft:#9DAEAE;
+      --ink-faint:#6E8080; --rule:#27312F; --normal:#57C6D2; --attack:#E4907A;
+      --wash:rgba(87,198,210,0.10); --attack-wash:rgba(228,144,122,0.12);
+  }
+  :root[data-theme="light"] {
+      --paper:#F4F6F5; --surface:#FFFFFF; --ink:#121A1B; --ink-soft:#4A5A5D;
+      --ink-faint:#7C8C8E; --rule:#D2DAD9; --normal:#0F6E7A; --attack:#A3402F;
+      --wash:rgba(15,110,122,0.07); --attack-wash:rgba(163,64,47,0.08);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-body); font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 66rem; margin: 0 auto; padding: 3.5rem 1.5rem 6rem;
+    display: flex; flex-direction: column; gap: 1.6rem;
+  }
+
+  .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 1.4rem;
+              display: flex; flex-direction: column; gap: 0.7rem; }
+  .eyebrow { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.14em;
+             text-transform: uppercase; color: var(--normal); }
+  h1 { font-family: var(--font-display); font-weight: 600;
+       font-size: clamp(1.9rem, 4vw, 2.7rem); line-height: 1.12; margin: 0;
+       text-wrap: balance; max-width: 20ch; }
+  .standfirst { font-size: 1.05rem; color: var(--ink-soft); max-width: 46rem; margin: 0; }
+
+  section { display: flex; flex-direction: column; gap: 0.85rem;
+            padding-top: 1rem; border-top: 1px solid var(--rule); }
+  section.flush { border-top: none; padding-top: 0; }
+  h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.55rem;
+       line-height: 1.2; margin: 0; text-wrap: balance; }
+  h3 { font-family: var(--font-body); font-weight: 600; font-size: 0.98rem;
+       margin: 0.7rem 0 0; }
+  p { margin: 0; max-width: 46rem; }
+  ul, ol { margin: 0; padding-left: 1.2rem; max-width: 46rem; }
+  li { margin-bottom: 0.3rem; }
+  li::marker { color: var(--ink-faint); }
+
+  code { font-family: var(--font-mono); font-size: 0.85em; background: var(--wash);
+         padding: 0.1em 0.35em; border-radius: 2px; }
+  strong { font-weight: 650; }
+
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.87rem; min-width: 34rem; }
+  th, td { text-align: left; padding: 0.5rem 0.8rem 0.5rem 0;
+           border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--font-mono); font-size: 0.67rem; letter-spacing: 0.1em;
+       text-transform: uppercase; color: var(--ink-faint); font-weight: 500;
+       border-bottom: 1px solid var(--ink-soft); white-space: nowrap; }
+  td.mono { font-family: var(--font-mono); font-size: 0.8rem; white-space: nowrap; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; padding-right: 1.2rem; }
+
+  figure { margin: 0.4rem 0; display: flex; flex-direction: column; gap: 0.6rem; }
+  .figbox { background: var(--surface); border: 1px solid var(--rule);
+            padding: 1.3rem 1rem; overflow-x: auto; }
+  figure svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+  figcaption { font-size: 0.83rem; color: var(--ink-soft); max-width: 46rem; line-height: 1.5; }
+
+  .note { border-left: 3px solid var(--attack); background: var(--attack-wash);
+          padding: 0.85rem 1.05rem; display: flex; flex-direction: column;
+          gap: 0.45rem; max-width: 48rem; }
+  .note .label { font-family: var(--font-mono); font-size: 0.67rem; letter-spacing: 0.12em;
+                 text-transform: uppercase; color: var(--attack); }
+  .note p { max-width: none; font-size: 0.93rem; }
+
+  pre { background: var(--surface); border: 1px solid var(--rule); padding: 0.85rem 1rem;
+        overflow-x: auto; font-family: var(--font-mono); font-size: 0.79rem;
+        line-height: 1.55; margin: 0; }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  ol.trace { counter-reset: step; list-style: none; padding-left: 0; max-width: 48rem; }
+  ol.trace > li { counter-increment: step; display: grid;
+                  grid-template-columns: 1.7rem 1fr; gap: 0.8rem;
+                  padding: 0.5rem 0; border-bottom: 1px solid var(--rule); }
+  ol.trace > li::before { content: counter(step); font-family: var(--font-mono);
+                          font-size: 0.78rem; color: var(--normal); padding-top: 0.15rem; }
+
+  @media (max-width: 34rem) { .page { padding: 2.5rem 1.1rem 4rem; } }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="eyebrow">Code Guide</div>
+    <h1>How the project actually works</h1>
+    <p class="standfirst">
+      What every file does, how four separate pieces of software fit together,
+      what happens during one second of simulated time, and which file to open
+      when you want to change something.
+    </p>
+  </header>
+
+  <!-- ============================================================ -->
+  <section class="flush">
+    <h2>The idea in one paragraph</h2>
+    <p>
+      A simulated network carries normal traffic and a flood. The switch counts
+      every packet and, once a second, describes each traffic flow with six
+      numbers. Those numbers go to the SDN controller, which asks a machine
+      learning model whether each flow looks like an attack. If it does, the
+      controller tells the switch to drop that source, and the flood stops
+      reaching its target. The models are trained beforehand in Python and
+      compiled into the simulator as plain C++.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>Four pieces of software, and who does what</h2>
+    <p>
+      Only the last two rows are ours. The rest is existing software we
+      assembled - which is normal, and worth being able to explain.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Layer</th><th>What it provides</th><th>What we did with it</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>OMNeT++ 6.0.2</strong><br><span style="color:var(--ink-faint)">simulation engine</span></td>
+            <td>Event scheduler, the NED language for describing networks, the ini
+                configuration system, result recording, and the Qtenv GUI.</td>
+            <td>Used as-is. Everything runs on its event loop; "60 seconds" means
+                60 seconds of its simulated clock.</td>
+          </tr>
+          <tr>
+            <td><strong>INET 3.8.5</strong><br><span style="color:var(--ink-faint)">networking models</span></td>
+            <td>Hosts, Ethernet cards and cables, IPv4, ARP, UDP, TCP, traffic
+                applications, a plain layer-2 switch, and the address
+                configurator.</td>
+            <td>Every host, link and packet comes from here. We had to work
+                around its address configurator, and abandon its TCP entirely.</td>
+          </tr>
+          <tr>
+            <td><strong>OpenFlow (CoRE-RG)</strong><br><span style="color:var(--ink-faint)">the SDN layer</span></td>
+            <td>An OpenFlow switch and controller, the flow table, the protocol
+                messages, and ready-made controller apps for forwarding and ARP.</td>
+            <td>Provides the SDN behaviour. It has no flow statistics and no drop
+                action, which is the main thing we had to build around.</td>
+          </tr>
+          <tr>
+            <td><strong>Our C++</strong><br><span style="color:var(--ink-faint)">the project</span></td>
+            <td>A measuring switch, a detecting controller app, two custom
+                messages, the topology and the experiment configurations.</td>
+            <td>About 700 lines. This is the actual contribution.</td>
+          </tr>
+          <tr>
+            <td><strong>Python + scikit-learn</strong><br><span style="color:var(--ink-faint)">offline only</span></td>
+            <td>Decision Tree and K-Means algorithms, plus plotting.</td>
+            <td>Trains the models and writes them out as C++ headers. Never runs
+                during a simulation.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>One second of simulated time</h2>
+    <p>
+      This is the loop that matters. Every box names the file and function that
+      does the work, so you can follow it in the source.
+    </p>
+
+    <figure>
+      <div class="figbox">
+        <svg viewBox="0 0 860 430" role="img"
+             aria-label="A packet arrives at the switch, which checks a block list and either drops it or counts it. Once a second a timer builds a flow statistics message and sends it to the controller, which emits it as a signal to the detector app. The detector builds a six-number feature vector, classifies it, and on an attack sends a block command back to the switch, which adds the source to the block list.">
+          <defs>
+            <marker id="a" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+            </marker>
+            <marker id="ac" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--normal)"/>
+            </marker>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--attack)"/>
+            </marker>
+          </defs>
+          <g font-family="Consolas, monospace" font-size="11" fill="currentColor">
+
+            <text x="16" y="20" font-size="10" letter-spacing="1.4" fill="var(--ink-faint)">SWITCH — DDoSSwitch.cc</text>
+            <text x="560" y="20" font-size="10" letter-spacing="1.4" fill="var(--ink-faint)">CONTROLLER</text>
+
+            <!-- packet in -->
+            <rect x="16" y="36" width="120" height="40" fill="none" stroke="currentColor"/>
+            <text x="76" y="53" text-anchor="middle">packet arrives</text>
+            <text x="76" y="68" text-anchor="middle" font-size="9.5" fill="var(--ink-faint)">from a host</text>
+
+            <!-- handleMessage -->
+            <rect x="176" y="30" width="168" height="52" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="260" y="50" text-anchor="middle">handleMessage()</text>
+            <text x="260" y="66" text-anchor="middle" font-size="9.5" fill="var(--ink-faint)">is this source blocked?</text>
+            <path d="M 136 56 L 172 56" stroke="currentColor" fill="none" marker-end="url(#a)"/>
+
+            <!-- drop -->
+            <rect x="384" y="26" width="128" height="30" fill="none" stroke="var(--attack)" stroke-width="1.5"/>
+            <text x="448" y="45" text-anchor="middle" fill="var(--attack)">delete — dropped</text>
+            <path d="M 344 44 L 380 41" stroke="var(--attack)" fill="none" marker-end="url(#ar)"/>
+            <text x="362" y="24" text-anchor="middle" font-size="9" fill="var(--attack)">yes</text>
+
+            <!-- record -->
+            <rect x="384" y="66" width="128" height="44" fill="none" stroke="currentColor"/>
+            <text x="448" y="84" text-anchor="middle">recordFrame()</text>
+            <text x="448" y="99" text-anchor="middle" font-size="9.5" fill="var(--ink-faint)">+1 packet, +N bytes</text>
+            <path d="M 344 70 L 380 84" stroke="currentColor" fill="none" marker-end="url(#a)"/>
+            <text x="362" y="104" text-anchor="middle" font-size="9" fill="var(--ink-faint)">no</text>
+
+            <!-- counters store -->
+            <rect x="384" y="126" width="128" height="40" fill="var(--wash)" stroke="var(--normal)"/>
+            <text x="448" y="144" text-anchor="middle" fill="var(--normal)">per-flow counters</text>
+            <text x="448" y="158" text-anchor="middle" font-size="9.5" fill="var(--normal)">std::map flows</text>
+            <path d="M 448 110 L 448 122" stroke="currentColor" fill="none" marker-end="url(#a)"/>
+
+            <line x1="16" y1="188" x2="844" y2="188" stroke="var(--rule)" stroke-dasharray="4 4"/>
+            <text x="16" y="206" font-size="10" letter-spacing="1.4" fill="var(--ink-faint)">ONCE PER SECOND</text>
+
+            <!-- timer -->
+            <rect x="16" y="220" width="150" height="46" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="91" y="239" text-anchor="middle">statsTimer fires</text>
+            <text x="91" y="254" text-anchor="middle" font-size="9.5" fill="var(--ink-faint)">sendStatsReport()</text>
+
+            <!-- features -->
+            <rect x="206" y="220" width="168" height="46" fill="none" stroke="currentColor"/>
+            <text x="290" y="239" text-anchor="middle">6 numbers per flow</text>
+            <text x="290" y="254" text-anchor="middle" font-size="9.5" fill="var(--ink-faint)">rates, size, pairing…</text>
+            <path d="M 166 243 L 202 243" stroke="currentColor" fill="none" marker-end="url(#a)"/>
+
+            <!-- message -->
+            <rect x="414" y="220" width="168" height="46" fill="var(--wash)" stroke="var(--normal)" stroke-width="1.5"/>
+            <text x="498" y="239" text-anchor="middle" fill="var(--normal)">DDoSFlowStats</text>
+            <text x="498" y="254" text-anchor="middle" font-size="9.5" fill="var(--normal)">over OFPT_VENDOR</text>
+            <path d="M 374 243 L 410 243" stroke="currentColor" fill="none" marker-end="url(#a)"/>
+
+            <!-- detector -->
+            <rect x="622" y="212" width="222" height="62" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <text x="733" y="232" text-anchor="middle">DDoSDetectorApp.cc</text>
+            <text x="733" y="248" text-anchor="middle" font-size="9.5" fill="var(--ink-faint)">handleFlowStats()</text>
+            <text x="733" y="264" text-anchor="middle" font-size="9.5" fill="var(--ink-faint)">dtClassify() / kmClassify()</text>
+            <path d="M 582 243 L 618 243" stroke="var(--normal)" stroke-width="1.5" fill="none" marker-end="url(#ac)"/>
+
+            <!-- verdict -->
+            <rect x="622" y="306" width="222" height="40" fill="none" stroke="var(--attack)" stroke-width="1.5"/>
+            <text x="733" y="331" text-anchor="middle" fill="var(--attack)">attack → sendBlock()</text>
+            <path d="M 733 274 L 733 302" stroke="currentColor" fill="none" marker-end="url(#a)"/>
+
+            <!-- block command back -->
+            <path d="M 622 326 L 300 326 L 300 300 L 260 300" stroke="var(--attack)" stroke-width="1.5"
+                  fill="none" marker-end="url(#ar)"/>
+            <rect x="112" y="284" width="148" height="34" fill="none" stroke="var(--attack)"/>
+            <text x="186" y="305" text-anchor="middle" fill="var(--attack)">DDoSBlockCommand</text>
+
+            <!-- into blocked map -->
+            <rect x="112" y="352" width="148" height="40" fill="var(--attack-wash)" stroke="var(--attack)"/>
+            <text x="186" y="370" text-anchor="middle" fill="var(--attack)">blocked list</text>
+            <text x="186" y="384" text-anchor="middle" font-size="9.5" fill="var(--attack)">(port, source) → expiry</text>
+            <path d="M 186 318 L 186 348" stroke="var(--attack)" fill="none" marker-end="url(#ar)"/>
+
+            <text x="290" y="374" font-size="10" fill="var(--ink-faint)">the next packet from that source hits the check at the top and is dropped</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        The loop closes at the bottom left: what the controller decides becomes
+        the check the very next packet runs into. Everything above is our code
+        except the transport between switch and controller, which is the
+        OpenFlow model's existing connection.
+      </figcaption>
+    </figure>
+
+    <h3>The same thing in words</h3>
+    <ol class="trace">
+      <li>A host sends a packet. It reaches the switch module's <code>handleMessage()</code>.</li>
+      <li>The switch checks its block list. If that source is blocked on that port, the packet is deleted here and never reaches the victim. <strong>This is the mitigation.</strong></li>
+      <li>Otherwise <code>recordFrame()</code> adds one packet and its bytes to the counters for that flow, where a flow is source and destination address, protocol and ports.</li>
+      <li>Once a second a timer calls <code>sendStatsReport()</code>, which turns each active flow into six numbers and resets the counters.</li>
+      <li>Those go to the controller in a <code>DDoSFlowStats</code> message, riding the OpenFlow vendor channel so no change to the OpenFlow model was needed.</li>
+      <li>The controller emits it as a signal; <code>DDoSDetectorApp</code> receives it and, for each flow, builds a six-element array and calls <code>dtClassify()</code> or <code>kmClassify()</code>.</li>
+      <li>On a verdict of attack it sends a <code>DDoSBlockCommand</code> back with the port and source address.</li>
+      <li>The switch adds that pair to its block list with an expiry ten seconds later. Step 2 now drops that traffic until the block lapses.</li>
+    </ol>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>The five detector modes</h2>
+    <p>
+      One parameter in the ini file picks which decision rule runs. All of them
+      use the same two trained models underneath; what differs is how a verdict
+      is reached.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Mode</th><th>How it decides</th><th>Its parameter</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">collect</td>
+            <td>Never blocks. Labels each flow from ground truth and writes the training CSV.</td>
+            <td class="mono">csvFile</td>
+          </tr>
+          <tr>
+            <td class="mono">dt</td>
+            <td>Decision Tree only. Blocks when the tree says attack.</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td class="mono">kmeans</td>
+            <td>K-Means only. Blocks when a flow sits further from every normal cluster than the threshold.</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td class="mono">hybrid</td>
+            <td>Tree blocks on sight. K-Means alone must flag the same flow for several consecutive reports first.</td>
+            <td class="mono">confirmations</td>
+          </tr>
+          <tr>
+            <td class="mono">cost</td>
+            <td>Scores both actions and takes the cheaper. See below.</td>
+            <td class="mono">falseBlockCost</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>How the cost rule works</h3>
+    <p>
+      This is expectimax at depth one: rather than thresholding a yes/no, put a
+      price on each action and pick the cheaper.
+    </p>
+    <pre><code>p = distance / (distance + threshold)     // K-Means distance as confidence
+if the tree says attack:  p = max(p, 0.99)
+
+cost of allowing = p       x bytes this flow will deliver
+cost of blocking = (1 - p) x falseBlockCost
+
+block if  cost of allowing &gt; cost of blocking</code></pre>
+    <p>
+      The left-hand side scales with the flow's own rate, so <strong>a loud
+      suspicious flow is blocked on weaker evidence than a quiet one</strong> -
+      which is precisely what a fixed threshold cannot express, and why this
+      beats the hybrid where false positives are expensive.
+    </p>
+
+    <div class="note">
+      <span class="label">The parameter is not cosmetic</span>
+      <p>
+        <code>falseBlockCost</code> is measured in bytes, and the scale that
+        matters is the attack's own byte rate. A quiet attack delivers about
+        14 kB/s, so a penalty of 200,000 demands near-certainty and the rule
+        never fires — it degenerates into the Decision Tree and scores zero.
+        At 30,000 it works well. Always sweep it against the attack you care
+        about rather than trusting a default.
+      </p>
+    </div>
+
+    <h3>Seeing it happen</h3>
+    <p>
+      When a block is installed, the switch turns the offending host's icon red,
+      pops a <code>BLOCKED 192.168.1.21</code> bubble, and updates a caption
+      under itself with the number of blocked sources and dropped frames. The
+      colour clears when the block expires. All of it lives in
+      <code>setHostAlarm()</code> and <code>refreshBlockDisplay()</code> in
+      <code>DDoSSwitch.cc</code>, and does nothing when running headless.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>The other half: training, which happens beforehand</h2>
+    <p>
+      Nothing above involves Python. The models must already exist as C++ when
+      the simulation starts, so training is a separate pass:
+    </p>
+    <ol class="trace">
+      <li><code>bash run.sh Collect Cmdenv 60s</code> runs the network with the detector in observe-only mode. It writes one CSV row per flow per second, labelled attack if the source is one of the attacker hosts named in the ini file.</li>
+      <li><code>python inspect_csv.py</code> checks the dataset — this is what catches a feature that is the same value in both classes and therefore useless.</li>
+      <li><code>python train.py</code> fits the Decision Tree on labelled rows and K-Means on the normal rows only, then <strong>writes both out as C++ source</strong>: <code>src/DecisionTree.h</code> and <code>src/KMeansModel.h</code>.</li>
+      <li><code>bash build.sh</code> compiles those headers into the simulator.</li>
+    </ol>
+    <p>
+      The trained Decision Tree is four lines of C++ — a single comparison. K-Means
+      is three centroid coordinates plus a distance check. Neither needs a machine
+      learning library at simulation time, which is exactly why this approach fits
+      inside a C++ simulator at all.
+    </p>
+    <div class="note">
+      <span class="label">The step people forget</span>
+      <p>
+        Retraining without running <code>build.sh</code> changes nothing. The model
+        lives inside the compiled executable, not in a file the simulator reads at
+        startup.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>Every file, and what it is for</h2>
+
+    <h3>The simulation — C++ and NED</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>File</th><th class="num">Lines</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">src/DDoSSwitch.cc / .h</td><td class="num">346</td><td>The measuring switch. Counts packets per flow, reports once a second, and drops blocked sources. Extends the OpenFlow model's switch rather than modifying it.</td></tr>
+          <tr><td class="mono">src/DDoSDetectorApp.cc / .h</td><td class="num">370</td><td>The controller app. Receives statistics, builds feature vectors, runs a model, writes the dataset in collect mode, sends block commands, records all the result metrics.</td></tr>
+          <tr><td class="mono">src/DDoSMessages.msg</td><td class="num">56</td><td>The two custom messages: statistics up, block command down. OMNeT++ generates C++ from this at build time.</td></tr>
+          <tr><td class="mono">src/DDoSNetwork.ned</td><td class="num">116</td><td>The topology: clients, attackers, victim, access switch, OpenFlow switch, controller, and how they are wired.</td></tr>
+          <tr><td class="mono">src/DDoSOFSwitch.ned</td><td class="num">109</td><td>A switch node that uses our relay unit instead of the stock one. Exists only because the original hardcodes its type.</td></tr>
+          <tr><td class="mono">src/DDoSSwitch.ned<br>src/DDoSDetectorApp.ned</td><td class="num">58</td><td>Declare the two modules to NED and define their parameters.</td></tr>
+          <tr><td class="mono">src/DecisionTree.h<br>src/KMeansModel.h</td><td class="num">72</td><td><strong>Generated — never edit.</strong> The trained models as C++.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Configuration</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>File</th><th class="num">Lines</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">simulations/omnetpp.ini</td><td class="num">281</td><td>Every experiment. Traffic settings, attack rates, which detector runs, and the named configurations (<code>Collect</code>, <code>DecisionTree</code>, <code>KMeans</code>, <code>Hybrid</code>, the low-rate variants, the intensity sweep). <strong>The file you will edit most.</strong></td></tr>
+          <tr><td class="mono">simulations/ipv4config.xml</td><td class="num">38</td><td>Address assignment. Needed because the standard configurator does not understand an OpenFlow switch and otherwise puts every host on its own subnet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Machine learning — Python, offline</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>File</th><th class="num">Lines</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">ml/schema.py</td><td class="num">34</td><td>The column and feature definitions. <strong>The contract</strong> between the C++ and the Python; feature order here must match the C++ side exactly.</td></tr>
+          <tr><td class="mono">ml/train.py</td><td class="num">270</td><td>Trains both models, evaluates them, and exports them as C++ headers.</td></tr>
+          <tr><td class="mono">ml/inspect_csv.py</td><td class="num">53</td><td>Per-class summary of a dataset. Run it on every new dataset before training.</td></tr>
+          <tr><td class="mono">ml/plot_results.py<br>ml/plot_sweep.py<br>ml/plot_frontier.py</td><td class="num">~390</td><td>The result charts: the detector comparison, the attack-intensity curve, and the false-positive / recall frontier.</td></tr>
+          <tr><td class="mono">ml/make_synthetic.py</td><td class="num">142</td><td>Fake data generator. Only used to build the pipeline before the simulator existed; no result depends on it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Scripts</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>File</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">shell.cmd</td><td>Double-click to open the OMNeT++ terminal here. Every <code>.sh</code> below needs that terminal.</td></tr>
+          <tr><td class="mono">check_setup.sh</td><td>Verifies all four layers and then runs a real simulation to prove traffic flows and blocking works. Start here if anything is broken.</td></tr>
+          <tr><td class="mono">build.sh</td><td>Compiles the C++ into <code>sdnddos.exe</code>.</td></tr>
+          <tr><td class="mono">run.sh</td><td>Runs one configuration: <code>bash run.sh DecisionTree Qtenv 60s</code></td></tr>
+          <tr><td class="mono">compare.sh</td><td>One run of each configuration, printed as a table.</td></tr>
+          <tr><td class="mono">experiments.sh</td><td>Every configuration across five random seeds, into <code>results/experiments.csv</code>.</td></tr>
+          <tr><td class="mono">sweep.sh</td><td>The attack-intensity sweep, into <code>results/sweep.csv</code>.</td></tr>
+          <tr><td class="mono">sweep_param.sh</td><td>Generic parameter sweep. Used for the hybrid's patience and the cost rule's penalty.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>"I want to change X" — which file?</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>You want to…</th><th>Edit</th><th>Then</th></tr></thead>
+        <tbody>
+          <tr><td>Make the attack stronger or weaker</td><td class="mono">simulations/omnetpp.ini<br>attacker sendInterval</td><td>just run</td></tr>
+          <tr><td>Change when the attack starts</td><td class="mono">omnetpp.ini — startTime</td><td>just run</td></tr>
+          <tr><td>Add more attackers or clients</td><td class="mono">omnetpp.ini — numAttacker / numNormal<br><strong>and attackerModules</strong></td><td>just run</td></tr>
+          <tr><td>Detect more or less often</td><td class="mono">omnetpp.ini — statsInterval</td><td>just run</td></tr>
+          <tr><td>Change how long a block lasts</td><td class="mono">omnetpp.ini — blockDuration</td><td>just run</td></tr>
+          <tr><td>Switch which detector runs</td><td class="mono">omnetpp.ini — mode<br>(dt / kmeans / hybrid / cost)</td><td>just run</td></tr>
+          <tr><td>Make the hybrid more or less cautious</td><td class="mono">omnetpp.ini — confirmations</td><td>just run</td></tr>
+          <tr><td>Make the cost rule more or less willing to block</td><td class="mono">omnetpp.ini — falseBlockCost</td><td>just run</td></tr>
+          <tr><td>Change the network shape</td><td class="mono">src/DDoSNetwork.ned</td><td>just run</td></tr>
+          <tr><td>Use a different ML algorithm</td><td class="mono">ml/train.py</td><td>retrain, then <code>build.sh</code></td></tr>
+          <tr><td>Retrain on fresh data</td><td class="mono">—</td><td>Collect, train, then <code>build.sh</code></td></tr>
+          <tr><td>Add or change a feature</td><td class="mono">five files — see below</td><td>retrain, then <code>build.sh</code></td></tr>
+          <tr><td>Add a new detector mode</td><td class="mono">DDoSDetectorApp .h/.cc/.ned<br>+ a config in the ini</td><td><code>build.sh</code></td></tr>
+          <tr><td>Record a new metric</td><td class="mono">DDoSDetectorApp.cc — finish()</td><td><code>build.sh</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="label">Adding a feature touches five files, in this order</span>
+      <p>
+        <code>ml/schema.py</code> (add the name) →
+        <code>src/DDoSMessages.msg</code> (add the field) →
+        <code>src/DDoSSwitch.cc</code> (measure it, fill it in) →
+        <code>src/DDoSDetectorApp.cc</code> (add it to the feature array and the CSV) →
+        retrain → <code>build.sh</code>.
+      </p>
+      <p>
+        <strong>The order of the features must be identical</strong> in
+        <code>schema.py</code>, the message, and the feature array. The generated
+        header refers to them only as <code>f[0]</code> … <code>f[5]</code>, so a
+        mismatch will not fail to compile — it will silently feed the model the
+        wrong numbers.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>The dataset</h2>
+    <p>
+      It is ours. Nothing was downloaded. The simulator computes the network, so
+      it can also describe it, and because the configuration file says which
+      hosts are attackers, every row's label is known exactly rather than
+      guessed.
+    </p>
+
+    <h3>What one row looks like</h3>
+    <p>
+      Fourteen columns: time, switch, source and destination address, protocol,
+      source and destination port, ingress port, then the six features, then the
+      label. The first eight identify the flow and are never shown to the model -
+      they exist so that a detection can name a port to block.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Feature</th><th>Meaning</th><th>Why it helps</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">pkt_rate</td><td>packets per second</td><td>floods are loud — but so is a busy client</td></tr>
+          <tr><td class="mono">byte_rate</td><td>bytes per second</td><td>separates many tiny packets from a big download</td></tr>
+          <tr><td class="mono">avg_pkt_size</td><td>bytes per packet</td><td>attack packets are small</td></tr>
+          <tr><td class="mono">duration</td><td>seconds the flow has existed</td><td>attack flows are short-lived</td></tr>
+          <tr><td class="mono">pair_flow</td><td>1 if replies come back</td><td>real conversations get answered; floods do not</td></tr>
+          <tr><td class="mono">port_src_count</td><td>distinct sources on that port</td><td>many sources on one port suggests an attack — though a shared uplink looks the same</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>What is in <code>data/</code></h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>File</th><th class="num">Rows</th><th>What it is</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">flows_sim.csv</td><td class="num">567</td><td><strong>The training set.</strong> Full-rate attack. 490 normal, 77 attack.</td></tr>
+          <tr><td class="mono">flows_lowrate.csv</td><td class="num">570</td><td>The quiet attack, used as the unseen test.</td></tr>
+          <tr><td class="mono">train.csv, test_lowrate.csv</td><td class="num">4,800</td><td>Invented data from before the simulator worked. No result uses them.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Is 567 rows enough?</h3>
+    <p>
+      For this problem, yes. An image classifier needs millions of examples
+      because one photo is 150,000 numbers and the model must discover its own
+      features and learn millions of weights. Here one example is six numbers we
+      chose ourselves, and the trained Decision Tree is a single threshold.
+      Learning one number from 567 rows is comfortable.
+    </p>
+    <p>
+      The real limitation is not quantity but <strong>variety</strong>. The
+      training set contains one attack rate, one topology and one traffic mix.
+      That is exactly why the Decision Tree fails on a quieter attack — the same
+      way a cat detector trained only on black cats fails on a white one, not for
+      lack of black cats.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>What each layer could not do, and what we did instead</h2>
+    <p>
+      These are the load-bearing workarounds. If something breaks later, it will
+      probably be one of these.
+    </p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Problem</th><th>What we did</th></tr></thead>
+        <tbody>
+          <tr><td>The OpenFlow model has <strong>no flow statistics at all</strong> — no stats message, and flow entries have no packet or byte counters.</td><td>Subclassed the switch and measured traffic ourselves. The vendored model is an untouched checkout.</td></tr>
+          <tr><td>A flow rule <strong>cannot express "drop"</strong> — the switch reads an output port out of the entry and has no idea what an empty action means.</td><td>Our switch implements the drop itself, driven by our own block command.</td></tr>
+          <tr><td>The address configurator gives every host its own subnet, so nothing can talk.</td><td><code>assignDisjunctSubnetAddresses = false</code> plus an explicit address block.</td></tr>
+          <tr><td>The model's own <code>LearningSwitch</code> app crashes.</td><td>Used the app stack every working example uses instead.</td></tr>
+          <tr><td>INET's TCP does not work over this path.</td><td>Normal traffic uses UDP echo, which is bidirectional in the way the features need.</td></tr>
+          <tr><td>The controller barely sees any packets once flow rules are installed — 7 out of 41,000.</td><td>Confirms measurement must happen at the switch, not by watching the controller.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>Every command</h2>
+    <p>
+      Double-click <code>shell.cmd</code> in the project folder first. That
+      opens the OMNeT++ terminal in the right place; PowerShell and Git Bash do
+      not have the toolchain and every script will fail in them. The Python
+      commands are the exception - run those from PowerShell.
+    </p>
+
+    <h3>Check everything works</h3>
+<pre><code>bash check_setup.sh</code></pre>
+    <p>
+      Verifies OMNeT++, the compiler, the GUI, INET, the OpenFlow model, the
+      build, the trained models and the Python packages, then runs a real
+      simulation and confirms traffic flowed and an attacker was blocked. Every
+      failure prints the command that fixes it. <strong>Run this first if
+      anything is wrong.</strong>
+    </p>
+
+    <h3>Build</h3>
+<pre><code>bash build.sh            # after changing any .cc, .h, .msg, or retraining
+bash build.sh clean      # from scratch</code></pre>
+
+    <h3>Watch it run</h3>
+<pre><code>bash run.sh NoProtection Qtenv 60s    # attack unopposed
+bash run.sh DecisionTree Qtenv 60s   # supervised
+bash run.sh KMeans       Qtenv 60s   # unsupervised
+bash run.sh Hybrid       Qtenv 60s   # tree + corroboration
+bash run.sh CostRule     Qtenv 60s   # expected-cost rule
+
+bash run.sh LowRate_DT      Qtenv 60s   # the quiet attack vs the tree
+bash run.sh LowRate_KMeans  Qtenv 60s
+bash run.sh LowRate_Hybrid  Qtenv 60s
+bash run.sh LowRate_Cost    Qtenv 60s</code></pre>
+    <p>
+      In the GUI: <strong>Run Until</strong> &rarr; <code>18s</code>, then
+      <strong>Fast</strong> to watch the attack land and get blocked, then
+      <strong>Express</strong> to finish. Swap <code>Qtenv</code> for
+      <code>Cmdenv</code> to run headless and fast.
+    </p>
+
+    <h3>Produce the numbers</h3>
+<pre><code>bash compare.sh 60s      # one run of each config, printed as a table
+bash experiments.sh 5 60s   # every config x 5 seeds  -> results/experiments.csv
+bash sweep.sh 60s           # attack intensity sweep  -> results/sweep.csv
+
+bash sweep_param.sh Sweep_Confirmations conf results/sweep_confirmations.csv
+bash sweep_param.sh Sweep_Cost          cost results/sweep_cost.csv</code></pre>
+
+    <h3>Charts (PowerShell)</h3>
+<pre><code>cd D:\IUT\3-2\DP2\SDN-DDoS-ML\ml
+..\.venv\Scripts\python.exe plot_results.py  ..\results\experiments.csv
+..\.venv\Scripts\python.exe plot_sweep.py    ..\results\sweep.csv
+..\.venv\Scripts\python.exe plot_frontier.py</code></pre>
+
+    <h3>Rebuild the dataset and retrain</h3>
+<pre><code>bash run.sh Collect Cmdenv 60s              # in the OMNeT++ terminal</code></pre>
+<pre><code>cd D:\IUT\3-2\DP2\SDN-DDoS-ML\ml            # in PowerShell
+..\.venv\Scripts\python.exe inspect_csv.py ..\data\flows_sim.csv
+..\.venv\Scripts\python.exe train.py --train ..\data\flows_sim.csv --k 3</code></pre>
+<pre><code>bash build.sh                               # back in the OMNeT++ terminal</code></pre>
+    <p>
+      Do not skip <code>inspect_csv.py</code>. It is what catches a feature
+      that has the same value in both classes, which would otherwise produce
+      excellent-looking and completely meaningless accuracy.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>What to show as proof</h2>
+    <p>
+      The honest framing first, because it is also the strongest one:
+      <strong>no detector here is better than another in general.</strong> Each
+      one is a different point on a trade-off between catching attacks and
+      blocking innocent traffic. What can be proved is which point each method
+      reaches, and that two of them reach better points than the others. Saying
+      this out loud is what separates a considered project from one that quotes
+      a single accuracy figure.
+    </p>
+
+    <h3>Do not lead with accuracy</h3>
+    <p>
+      Against the low-rate attack the Decision Tree records 0 true positives,
+      0 false positives, 77 false negatives and 490 true negatives - an
+      <strong>accuracy of 86.4% while catching nothing at all</strong>. Roughly
+      86% of flows are normal, so a detector that flags nothing scores 86% for
+      free. Lead with recall, false positives, and packets reaching the victim.
+    </p>
+
+    <h3>The four pieces of evidence, in order of strength</h3>
+    <ol class="trace">
+      <li>
+        <strong>The mechanism, not a statistic.</strong> Open
+        <code>src/DecisionTree.h</code>: the entire trained model is
+        <code>if (byte_rate &lt;= 116465.5) return 0;</code>. The full-rate
+        attack runs at ~345,000 B/s and is caught; the quiet one runs at
+        ~13,900 B/s and falls on the wrong side, so every attack flow is called
+        normal. This explains the failure rather than merely reporting it, and
+        nobody can argue with it.
+      </li>
+      <li>
+        <strong>It is not just a weak model.</strong> A Random Forest trained on
+        the same data fails identically (recall 0.00), while a second
+        unsupervised method, Isolation Forest, catches the attack like K-Means.
+        The pattern holds across both families, which answers the obvious
+        objection that a stronger supervised model would have coped.
+      </li>
+      <li>
+        <strong>The network outcome.</strong> Packets reaching the victim is
+        free of the imbalance and denominator problems that affect recall:
+        4,396 with no protection, 4,396 with the Decision Tree, 1,394 with the
+        hybrid, 651 with K-Means. The tree delivering exactly as many packets as
+        no defence at all is the single most damning number in the project.
+      </li>
+      <li>
+        <strong>The frontier.</strong> <code>results/frontier.png</code> shows
+        false positives against recall for every setting of both new rules,
+        with plain K-Means and the Decision Tree marked for reference. At the
+        same false-positive level the cost rule reaches 0.51 recall where the
+        hybrid reaches 0.31. That is the comparison, stated properly: not
+        "better", but "better at this operating point".
+      </li>
+    </ol>
+
+    <h3>A live demo that makes the point in ninety seconds</h3>
+    <ol class="trace">
+      <li>Run <code>NoProtection</code> in the GUI. Run Until 18 s, then Fast. Watch the switch-to-victim link light up and stay lit.</li>
+      <li>Run <code>KMeans</code> the same way. The attackers turn red, the switch announces the block, and the victim link goes quiet while the access link stays busy - the flood is arriving and being destroyed at the switch.</li>
+      <li>Run <code>LowRate_DT</code>. Nothing turns red. Nothing is blocked. The victim link stays lit. That is the failure, visible.</li>
+      <li>Run <code>LowRate_Cost</code> with the penalty at 30,000. Blocking resumes.</li>
+    </ol>
+    <p>
+      Then show the three charts. The live demo proves the system works; the
+      charts prove it works repeatedly, across five random seeds.
+    </p>
+
+    <h3>Questions worth having an answer ready for</h3>
+    <ul>
+      <li><strong>"Why not a public dataset?"</strong> The model runs inside the switch, so it has to be trained on features the switch can measure; public captures describe flows with different features entirely. And the central experiment needs an attack at a rate we choose, which a fixed dataset cannot provide.</li>
+      <li><strong>"567 rows is tiny."</strong> One example is six numbers and the trained tree is a single threshold - quantity was never the constraint. Variety is: one attack rate, one topology. That narrowness is exactly what the low-rate experiment exposes.</li>
+      <li><strong>"Did you test on your training data?"</strong> The dataset was collected on seed 0 and the experiments use seeds 0-4, so run 0 shares its normal traffic. Runs 1-4 are independent, and the low-rate attack never appeared in training at all.</li>
+      <li><strong>"Isn't recall unfair to the hybrid?"</strong> Yes, partly - every second it waits for corroboration counts as a miss, and blocking removes the very traffic being counted, so the detectors' recalls rest on slightly different denominators. That is why packets-reaching-the-victim is reported alongside.</li>
+    </ul>
+  </section>
+
+  <!-- ============================================================ -->
+  <section>
+    <h2>Where the results come from</h2>
+    <p>
+      Every number in the report traces back to a file you can open.
+      <code>experiments.sh</code> runs each configuration five times with
+      different random seeds and writes <code>results/experiments.csv</code>;
+      <code>sweep.sh</code> varies the attack strength into
+      <code>results/sweep.csv</code>. The plotting scripts read those and produce
+      the charts. Nothing is typed in by hand.
+    </p>
+    <p>
+      Each simulation also writes OMNeT++'s own result files under
+      <code>simulations/results/</code> — scalars per run, which is where the
+      scripts read detections, false positives and packet counts from. Those are
+      large and regenerated by any run, so they are not committed.
+    </p>
+  </section>
+
+</div>

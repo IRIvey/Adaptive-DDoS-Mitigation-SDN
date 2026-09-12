@@ -63,6 +63,10 @@ OMNeT++ network  ->  traffic (normal + attack)
 - [x] Shared access switch, so `port_src_count` is a real signal
 - [x] Second attack type: low-rate flood, used as the unseen-attack test
 - [x] 5 seeded repetitions per configuration + comparison graphs
+- [x] Hybrid detector, and an expected-cost (depth-one expectimax) rule
+- [x] Parameter sweeps tracing each rule's false-positive / recall frontier
+- [x] Blocking shown live in the GUI: blocked hosts turn red, the switch
+      announces each block and shows a running dropped-frame count
 - [ ] A true spoofed SYN flood (see the note in `omnetpp.ini`)
 
 ## Results
@@ -72,20 +76,30 @@ Mean over 5 seeded repetitions, 60 s each. Models are trained on the
 
 | Attack | Detector | Victim rcvd | Blocked | Recall | FP |
 |---|---|---|---|---|---|
-| full-rate | none | 99,390 | 0 | - | - |
-| full-rate | Decision Tree | 10,078 | 89,313 | 0.92 | 0.0 |
-| full-rate | K-Means | 9,223 | 91,446 | 0.98 | 8.8 |
-| low-rate | none | 4,398 | 0 | - | - |
-| low-rate | Decision Tree | **4,398** | **0** | **0.00** | 0.0 |
-| low-rate | K-Means | 688 | 4,610 | 0.98 | 7.0 |
+| full-rate | none | 99,719 | 0 | - | - |
+| full-rate | Decision Tree | 10,157 | 89,562 | 0.90 | 0.0 |
+| full-rate | Hybrid | 10,157 | 89,562 | 0.90 | 0.0 |
+| full-rate | **Expected cost** | **9,190** | 90,529 | **0.98** | **0.0** |
+| full-rate | K-Means | 8,840 | 92,210 | 1.00 | 9.0 |
+| low-rate | none | 4,396 | 0 | - | - |
+| low-rate | Decision Tree | **4,396** | **0** | **0.00** | 0.0 |
+| low-rate | Hybrid | 1,394 | 3,044 | 0.31 | 0.2 |
+| low-rate | **Expected cost** | 1,133 | 3,392 | 0.51 | 0.4 |
+| low-rate | K-Means | 651 | 5,377 | 0.93 | 11.0 |
 
 ![recall](results/recall_by_attack.png)
 
 **The finding.** On the attack it was trained on, the Decision Tree is
-excellent - 0.92 recall with zero false positives. On an attack 25x quieter
+excellent - 0.90 recall with zero false positives. On an attack 25x quieter
 that it never saw, it catches **nothing**: recall 0.00, and the victim receives
-exactly as many packets as with no protection at all. K-Means holds at 0.98
-across both, because it only ever needed to know what normal looks like.
+exactly as many packets as with no protection at all. K-Means holds across
+both, because it only ever needed to know what normal looks like.
+
+**The expected-cost rule is the best all-rounder.** On the familiar attack it
+beats every other detector - 0.98 recall with no false positives at all - and
+on the unfamiliar one it still catches half of it for 0.4 false positives per
+run, where the Decision Tree catches nothing. Only plain K-Means catches more,
+and it does so at 11 false positives.
 
 **The cost.** K-Means pays for that with ~7-9 false positives per run -
 legitimate flows blocked. The Decision Tree blocks none. That is the trade,
@@ -125,6 +139,51 @@ learned one number, and any attack on the wrong side of it is invisible.
 A detail worth noting: at 1/5 rate the Decision Tree lets **20,210** packets
 through, twice as many as at full rate (10,078). It protects the victim worse
 against a weaker attack, because at full rate it at least blocked something.
+
+### Two ways to fix the trade-off
+
+Neither base detector is satisfactory: the tree blocks nothing it has not seen,
+K-Means catches everything but blocks ~11 legitimate flows per run. Two rules
+were added on top, both using the same two models underneath.
+
+**Hybrid.** The tree blocks on sight. K-Means alone must see the same flow stay
+anomalous for `confirmations` consecutive reports before it may block - a
+bursty client is strange for one second, an attack stays strange.
+
+**Expected-cost rule (expectimax at depth one).** Instead of a yes/no
+threshold, score both actions and take the cheaper. Allowing a flow costs the
+bytes it will deliver; blocking one costs a fixed penalty for cutting off a
+possible real user. K-Means' distance supplies the confidence. Because the
+first term scales with the flow's own rate, **a loud suspicious flow is blocked
+on weaker evidence than a quiet one.**
+
+Against the low-rate attack, sweeping each rule's one parameter:
+
+![frontier](results/frontier.png)
+
+| Rule | Setting | False positives | Recall |
+|---|---|---|---|
+| Hybrid | 1 (= plain K-Means) | 11.0 | 0.93 |
+| Hybrid | 2 | 1.6 | 0.48 |
+| Hybrid | 3 | 0.2 | 0.31 |
+| Hybrid | 5 | 0.0 | 0.20 |
+| Cost | penalty 2,000 | 30.4 | 0.96 |
+| Cost | penalty 8,000 | 18.0 | 0.86 |
+| Cost | penalty 30,000 | 0.4 | **0.51** |
+| Cost | penalty 200,000 | 0.0 | 0.00 |
+
+**The cost rule wins where it matters.** At roughly the same false-positive
+level (0.2 vs 0.4), it catches 0.51 of the attack against the hybrid's 0.31 -
+because it can act immediately on a loud flow instead of paying a fixed
+three-second wait regardless of how obvious the flow is. At the other end,
+where false positives are tolerable, plain K-Means is still the best point.
+
+Two honest notes. The 200,000 penalty was a badly chosen default: a quiet
+attack delivers ~14 kB/s, so that setting demands near-certainty and the rule
+degenerates into the tree, scoring 0.00 - visible as the point sitting exactly
+on the Decision Tree marker. And on the **full-rate** attack the cost rule is
+the best of all four (recall 0.98, zero false positives), because there the
+byte rate is enormous and the expected-cost sum is decisive.
 
 ## Running it
 

@@ -4,6 +4,8 @@
 #include "DecisionTree.h"
 #include "KMeansModel.h"
 
+#include <algorithm>
+
 #include "inet/networklayer/common/L3AddressResolver.h"
 #include "inet/networklayer/contract/ipv4/IPv4Address.h"
 #include "openflow/openflow/controller/Switch_Info.h"
@@ -29,9 +31,13 @@ void DDoSDetectorApp::initialize()
     if (m == "collect")      mode = MODE_COLLECT;
     else if (m == "dt")      mode = MODE_DT;
     else if (m == "kmeans")  mode = MODE_KMEANS;
-    else throw cRuntimeError("DDoSDetectorApp: unknown mode '%s' "
-                             "(expected collect, dt or kmeans)", m.c_str());
+    else if (m == "hybrid")  mode = MODE_HYBRID;
+    else if (m == "cost")    mode = MODE_COST;
+    else throw cRuntimeError("DDoSDetectorApp: unknown mode '%s' (expected "
+                             "collect, dt, kmeans, hybrid or cost)", m.c_str());
 
+    confirmations = par("confirmations").intValue();
+    falseBlockCost = par("falseBlockCost").doubleValue();
     blockDuration = par("blockDuration").doubleValue();
     writeCsv = par("writeCsv").boolValue();
     csvPath = par("csvFile").stdstringValue();
@@ -47,8 +53,55 @@ void DDoSDetectorApp::initialize()
             << "label\n";
     }
 
+    // A caption on the network canvas, so an audience can see which detector is
+    // running and whether it is currently blocking anything.
+    banner = new cTextFigure("ddosStatus");
+    banner->setPosition(cFigure::Point(14, 14));
+    banner->setAnchor(cFigure::ANCHOR_NW);
+    banner->setFont(cFigure::Font("Arial", 14, cFigure::FONT_BOLD));
+    banner->setColor(cFigure::Color("#0F6E7A"));
+    banner->setText("DDoS detector ready");
+    getSimulation()->getSystemModule()->getCanvas()->addFigure(banner);
+
     // Attacker addresses are resolved lazily, not here: interface tables are
     // still empty during initialization, and L3AddressResolver throws.
+}
+
+const char *DDoSDetectorApp::modeName() const
+{
+    switch (mode) {
+        case MODE_DT:     return "Decision Tree";
+        case MODE_KMEANS: return "K-Means";
+        case MODE_HYBRID: return "Hybrid";
+        case MODE_COST:   return "Expected cost";
+        default:          return "Collecting data";
+    }
+}
+
+void DDoSDetectorApp::updateBanner()
+{
+    if (banner == nullptr)
+        return;
+
+    // "Under attack" means something was flagged recently, not ever - so the
+    // caption goes back to calm once the network settles.
+    const bool active = (lastDetection >= SIMTIME_ZERO)
+                        && (simTime() - lastDetection < 5.0);
+
+    char buf[200];
+    if (mode == MODE_COLLECT) {
+        snprintf(buf, sizeof(buf), "COLLECTING DATA  -  %ld rows written",
+                 rowsWritten);
+    }
+    else {
+        snprintf(buf, sizeof(buf),
+                 "%s  -  %s   |   blocks issued: %ld   |   false alarms: %ld",
+                 modeName(), active ? "ATTACK DETECTED" : "traffic normal",
+                 blocksIssued, falsePos);
+    }
+    banner->setText(buf);
+    banner->setColor(active ? cFigure::Color("#A3402F")
+                            : cFigure::Color("#0F6E7A"));
 }
 
 void DDoSDetectorApp::resolveAttackers()
@@ -116,11 +169,73 @@ void DDoSDetectorApp::handleFlowStats(DDoSFlowStats *stats)
             firstAttackFlowSeen = simTime();
 
         int verdict = 0;
+        bool viaTree = false;
         switch (mode) {
-            case MODE_DT:     verdict = dtClassify(f); break;
-            case MODE_KMEANS: verdict = kmClassify(f); break;
+            case MODE_DT:
+                verdict = dtClassify(f);
+                viaTree = (verdict == 1);
+                break;
+
+            case MODE_KMEANS:
+                verdict = kmClassify(f);
+                break;
+
+            case MODE_HYBRID: {
+                const auto key = std::make_pair(r.inPort, r.srcIp);
+                if (dtClassify(f) == 1) {
+                    // A shape the tree was trained on. It has not produced a
+                    // single false positive in any run, so act immediately -
+                    // waiting would only let the flood through for longer.
+                    verdict = 1;
+                    viaTree = true;
+                    suspicion.erase(key);
+                }
+                else if (kmClassify(f) == 1) {
+                    // Unfamiliar to the tree, but it does not look like normal
+                    // traffic. Require the anomaly to persist before blocking:
+                    // a bursty client is odd for one interval, an attack stays
+                    // odd. This is where the false positives get filtered out,
+                    // and where the added detection delay comes from.
+                    if (++suspicion[key] >= confirmations) {
+                        verdict = 1;
+                        suspicion.erase(key);
+                    }
+                }
+                else {
+                    suspicion.erase(key);   // back to looking normal
+                }
+                break;
+            }
+
+            case MODE_COST: {
+                // Expectimax at depth one: score both actions by expected cost
+                // and take the cheaper, instead of thresholding a yes/no.
+                //
+                // K-Means gives a distance rather than a verdict, so it can act
+                // as a confidence. d/(d+threshold) is 0.5 exactly at the
+                // threshold and approaches 1 as the flow gets stranger. The
+                // tree is trusted when it fires, because it has never been
+                // wrong in any run.
+                const double d = kmDistance(f);
+                double p = d / (d + kmeans::THRESHOLD);
+                const bool treeSaysAttack = (dtClassify(f) == 1);
+                if (treeSaysAttack)
+                    p = std::max(p, 0.99);
+
+                // Letting an attack through costs the bytes it delivers to the
+                // victim; blocking a legitimate flow costs a fixed penalty.
+                const double costOfAllowing = p * r.byteRate;
+                const double costOfBlocking = (1.0 - p) * falseBlockCost;
+
+                verdict = (costOfAllowing > costOfBlocking) ? 1 : 0;
+                viaTree = (verdict == 1 && treeSaysAttack);
+                break;
+            }
+
             case MODE_COLLECT:
-            default:          verdict = 0; break;   // observe only
+            default:
+                verdict = 0;                // observe only
+                break;
         }
 
         if (writeCsv) {
@@ -153,8 +268,10 @@ void DDoSDetectorApp::handleFlowStats(DDoSFlowStats *stats)
 
         if (verdict == 1) {
             detections++;
+            if (viaTree) blocksFromTree++; else blocksFromKMeans++;
             if (firstDetection < SIMTIME_ZERO)
                 firstDetection = simTime();
+            lastDetection = simTime();
             if (isAttacker && firstTrueDetection < SIMTIME_ZERO)
                 firstTrueDetection = simTime();
             if (!isAttacker && firstAttackFlowSeen < SIMTIME_ZERO)
@@ -162,6 +279,8 @@ void DDoSDetectorApp::handleFlowStats(DDoSFlowStats *stats)
             sendBlock(r.inPort, r.srcIp, stats);
         }
     }
+
+    updateBanner();
 }
 
 void DDoSDetectorApp::sendBlock(uint32_t inPort, uint32_t srcIp, cMessage *context)
@@ -226,6 +345,12 @@ void DDoSDetectorApp::finish()
                          (firstTrueDetection - firstAttackFlowSeen).dbl());
 
         recordScalar("falsePositivesBeforeAttack", falsePositivesBeforeAttack);
+
+        if (mode == MODE_HYBRID) {
+            // Which half of the hybrid did the work.
+            recordScalar("blocksFromTree", blocksFromTree);
+            recordScalar("blocksFromKMeans", blocksFromKMeans);
+        }
     }
 }
 

@@ -2,6 +2,7 @@
 
 #include "DDoSMessages_m.h"
 
+#include "inet/networklayer/common/L3AddressResolver.h"
 #include "inet/networklayer/ipv4/IPv4Datagram.h"
 #include "inet/transportlayer/tcp_common/TCPSegment.h"
 #include "inet/transportlayer/udp/UDPPacket.h"
@@ -16,6 +17,13 @@ Define_Module(DDoSSwitch);
 
 // Kept well clear of the base class's own kinds (1 and 3).
 #define MSGKIND_DDOS_STATS 9101
+
+// Link colouring thresholds, in bytes per second on a 100 Mbit/s link.
+// A normal client sits near 10 kB/s and the flood near 350 kB/s, so these
+// sit either side of the gap rather than being round numbers for their own
+// sake.
+static const double ACTIVE_BYTES_PER_SEC = 20000.0;
+static const double BUSY_BYTES_PER_SEC = 100000.0;
 
 DDoSSwitch::~DDoSSwitch()
 {
@@ -72,9 +80,61 @@ bool DDoSSwitch::isBlocked(uint32_t inPort, uint32_t srcIp)
         // Block expired. Letting it lapse rather than persist means a false
         // positive costs a bounded amount of legitimate traffic.
         blocked.erase(it);
+        setHostAlarm(srcIp, false);
+        refreshBlockDisplay();
         return false;
     }
     return true;
+}
+
+void DDoSSwitch::setHostAlarm(uint32_t srcIp, bool blocked_now)
+{
+    cModule *host = L3AddressResolver().findHostWithAddress(IPv4Address(srcIp));
+    if (host == nullptr)
+        return;
+
+    // Argument 1 of the "i" tag is the icon tint. Only the tint is touched, so
+    // whatever icon the topology gave the host survives.
+    host->getDisplayString().setTagArg("i", 1, blocked_now ? "red" : "");
+    if (blocked_now)
+        host->bubble("blocked");
+}
+
+void DDoSSwitch::colourLinks()
+{
+    cModule *node = getParentModule();
+    const int n = gateSize("dataPlaneIn");
+
+    for (int i = 0; i < n; i++) {
+        cGate *g = node->gate("gateDataPlane$o", i);
+        if (g == nullptr)
+            continue;
+
+        const double rate = portBytes[i] / statsInterval;
+        cDisplayString& ds = g->getDisplayString();
+
+        if (rate > BUSY_BYTES_PER_SEC) {
+            ds.setTagArg("ls", 0, "red");
+            ds.setTagArg("ls", 1, "4");
+        }
+        else if (rate > ACTIVE_BYTES_PER_SEC) {
+            ds.setTagArg("ls", 0, "orange");
+            ds.setTagArg("ls", 1, "2");
+        }
+        else {
+            ds.setTagArg("ls", 0, "");
+            ds.setTagArg("ls", 1, "1");
+        }
+    }
+    portBytes.clear();
+}
+
+void DDoSSwitch::refreshBlockDisplay()
+{
+    char buf[96];
+    snprintf(buf, sizeof(buf), "blocking %d source(s)\n%ld frames dropped",
+             (int)blocked.size(), framesDroppedByBlock);
+    getDisplayString().setTagArg("t", 0, buf);
 }
 
 void DDoSSwitch::recordFrame(EthernetIIFrame *frame, uint32_t inPort)
@@ -98,6 +158,12 @@ void DDoSSwitch::recordFrame(EthernetIIFrame *frame, uint32_t inPort)
 
 void DDoSSwitch::sendStatsReport()
 {
+    // Keep the on-screen state live rather than only updating it when a block
+    // is installed. Both run before the early returns below, so the picture
+    // stays current even in an interval with nothing to report.
+    refreshBlockDisplay();
+    colourLinks();
+
     // Nothing to say, or nowhere to say it.
     if (flows.empty() || socket.getState() != TCPSocket::CONNECTED) {
         flows.clear();
@@ -187,6 +253,14 @@ void DDoSSwitch::handleMessage(cMessage *msg)
         EV << "DDoSSwitch: blocking source " << cmd->getSrcIp()
            << " on port " << cmd->getInPort()
            << " for " << cmd->getDurationSec() << "s\n";
+
+        // Make it visible on screen: the attacker turns red and the switch
+        // announces the block.
+        const std::string who = IPv4Address(cmd->getSrcIp()).str();
+        bubble(("BLOCKED " + who).c_str());
+        setHostAlarm(cmd->getSrcIp(), true);
+        refreshBlockDisplay();
+
         delete cmd;
         return;
     }
@@ -196,6 +270,10 @@ void DDoSSwitch::handleMessage(cMessage *msg)
     if (arrival != nullptr && strcmp(arrival->getBaseName(), "dataPlaneIn") == 0) {
         if (EthernetIIFrame *frame = dynamic_cast<EthernetIIFrame *>(msg)) {
             uint32_t inPort = arrival->getIndex();
+
+            // Counted before the block check on purpose: this is wire load, and
+            // a blocked attacker is still filling the cable.
+            portBytes[inPort] += static_cast<long>(frame->getByteLength());
 
             uint32_t srcIp, dstIp;
             uint16_t proto, srcPort, dstPort;
