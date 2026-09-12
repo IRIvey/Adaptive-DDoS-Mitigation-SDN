@@ -321,7 +321,7 @@
     <figure>
       <div class="figbox">
         <svg viewBox="0 0 780 400" role="img"
-             aria-label="Normal hosts and attacker hosts send traffic through an OpenFlow switch to a victim server. The switch sends packet-in events and flow statistics up to the controller, which runs feature extraction and a classifier, and sends a Flow-Mod drop rule back down to the switch.">
+             aria-label="Normal hosts and attacker hosts send traffic through an OpenFlow switch to a victim server. The switch sends flow statistics up to the controller over the OpenFlow vendor channel, the controller runs feature extraction and a classifier, and sends a custom block command back down, which the switch enforces itself.">
           <defs>
             <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
                     markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -406,13 +406,13 @@
             <path d="M 372 160 L 372 106" stroke="var(--normal)" stroke-width="1.6"
                   fill="none" marker-end="url(#ar-ctl)"/>
             <text x="245" y="128" text-anchor="start" font-size="10"
-                  fill="var(--normal)">Packet-In + flow stats</text>
+                  fill="var(--normal)">DDoSFlowStats (vendor msg)</text>
 
             <!-- controller -> switch (mitigation) -->
             <path d="M 456 106 L 456 156" stroke="var(--normal)" stroke-width="1.6"
                   fill="none" marker-end="url(#ar-ctl)"/>
             <text x="470" y="128" text-anchor="start" font-size="10"
-                  fill="var(--normal)">Flow-Mod: DROP</text>
+                  fill="var(--normal)">DDoSBlockCommand</text>
 
             <!-- blocked marker -->
             <line x1="200" y1="272" x2="228" y2="300" stroke="var(--attack)" stroke-width="2.4"/>
@@ -515,9 +515,9 @@
 
             <rect x="446" y="214" width="150" height="46" fill="none"
                   stroke="var(--attack)" stroke-width="1.5"/>
-            <text x="521" y="234" text-anchor="middle" fill="var(--attack)">Flow-Mod</text>
+            <text x="521" y="234" text-anchor="middle" fill="var(--attack)">DDoSBlockCommand</text>
             <text x="521" y="250" text-anchor="middle" font-size="10"
-                  fill="var(--attack)">DROP on in_port</text>
+                  fill="var(--attack)">switch drops on in_port</text>
 
             <rect x="16" y="214" width="150" height="46" fill="none" stroke="currentColor"/>
             <text x="91" y="234" text-anchor="middle">live flow stats</text>
