@@ -198,6 +198,16 @@ the OMNeT++ toolchain and will fail.
 Python steps are the exception - run those from PowerShell with the project's
 virtual environment, `.venv\Scripts\python.exe`.
 
+### Quick-start commands
+
+| Use case | Command | Notes |
+|---|---|---|
+| Smoke test | `bash run_fast.sh` | Fast DecisionTree validation, `Cmdenv`, one run, 25s |
+| Quick comparison | `bash quick_compare.sh` | Short side-by-side check of major configs |
+| Full comparison | `bash compare.sh 60s` | Standard quick experiment table |
+| Full sweep | `bash experiments.sh 5 60s` | 5 seeds x 6 configs -> `results/experiments.csv` |
+| Full rebuild | `bash build.sh` | Recompile the C++ modules |
+
 **Confirm the setup works** before anything else:
 
 ```
@@ -218,6 +228,14 @@ open the OMNeT++ IDE itself (not needed to run this project), use
 bash build.sh                           # compile the C++ modules
 bash compare.sh 60s                     # one run of each config, quick table
 bash experiments.sh 5 60s               # 5 seeds x 6 configs -> results/experiments.csv
+```
+
+### Result tracking
+
+The project keeps the most recent simulation output in `simulations/results/`.
+For repeated quick checks, run `bash run_fast.sh` and the script updates a
+`results/latest` symlink to the newest run directory so it is easy to compare
+successive runs.
 
 bash run.sh Collect      Cmdenv 60s     # produce the labelled dataset
 bash run.sh NoProtection Cmdenv 60s     # attack unopposed (baseline)
