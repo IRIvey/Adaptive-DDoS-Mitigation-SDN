@@ -914,7 +914,7 @@
           <tr><td class="mono">src/DecisionTree.h</td><td>generated — nested if/else, returns 1 for attack</td></tr>
           <tr><td class="mono">src/KMeansModel.h</td><td>generated — centroids, scaler constants, distance threshold</td></tr>
           <tr><td class="mono">simulations/</td><td>NED topology and omnetpp.ini run configurations</td></tr>
-          <tr><td class="mono">data/</td><td>training and test CSV sets</td></tr>
+          <tr><td class="mono">data/</td><td>the collected flow datasets (real, measured by the simulator)</td></tr>
           <tr><td class="mono">results/</td><td>metrics and graphs</td></tr>
           <tr><td class="mono">docs/setup.md</td><td>installation steps and the working run command</td></tr>
         </tbody>
@@ -922,14 +922,14 @@
     </div>
 
     <h3>Reproducing the ML side</h3>
-<pre><code>cd ml
-python make_synthetic.py --out ../data/train.csv
-python make_synthetic.py --out ../data/test_lowrate.csv --intensity 0.2 --seed 7
-python train.py --train ../data/train.csv --test ../data/test_lowrate.csv</code></pre>
+<pre><code># collect real data by running the simulator, then train on it
+bash run.sh Collect Cmdenv 60s
+cd ml
+python train.py --train ../data/flows_sim.csv --test ../data/flows_lowrate.csv</code></pre>
     <p>
-      When the simulator starts producing real data, the same
-      <code>train.py</code> command runs against it unchanged — only the input
-      file differs.
+      Every number in this document traces back to these two commands — the
+      dataset is measured by our own switch code inside a running simulation,
+      not downloaded or invented.
     </p>
   </section>
 

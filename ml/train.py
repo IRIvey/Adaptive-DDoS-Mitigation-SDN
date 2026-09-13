@@ -14,8 +14,8 @@ Both models are exported to C++ headers so the simulator runs the exact same
 decision logic that was evaluated here.
 
 Usage:
-    python train.py --train ../data/train.csv
-    python train.py --train ../data/train.csv --test ../data/test_lowrate.csv
+    python train.py --train ../data/flows_sim.csv
+    python train.py --train ../data/flows_sim.csv --test ../data/flows_lowrate.csv
 """
 import argparse
 import json
