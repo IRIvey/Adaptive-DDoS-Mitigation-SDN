@@ -8,6 +8,10 @@ src/Makefile
 src/*_m.cc
 src/*_m.h
 src/*.exe
+# The Linux build has no extension - a bare "sdnddos" slipped past the rule
+# above once and got committed. Name it explicitly rather than trying to
+# glob-match "no extension" safely.
+src/sdnddos
 
 # Per-run and per-user OMNeT++ state: the Cmdenv log, and the GUI's saved
 # window layout, which is specific to whoever last opened it

@@ -237,6 +237,7 @@ For repeated quick checks, run `bash run_fast.sh` and the script updates a
 `results/latest` symlink to the newest run directory so it is easy to compare
 successive runs.
 
+```
 bash run.sh Collect      Cmdenv 60s     # produce the labelled dataset
 bash run.sh NoProtection Cmdenv 60s     # attack unopposed (baseline)
 bash run.sh DecisionTree Cmdenv 60s     # supervised detection + blocking
